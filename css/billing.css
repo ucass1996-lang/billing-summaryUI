@@ -900,3 +900,18 @@ body{overflow:hidden}
 #pageBody .d-grid>*,#pageBody .row>*{min-width:0}
 .pl-id>div,.pl-sub,.pl-name{min-width:0}
 .pl-name,.pl-sub{overflow-wrap:anywhere}
+
+/* ===== Resizable columns and rows ===== */
+.btable th,.btable td{position:relative}
+.rz-col{position:absolute;top:0;right:0;bottom:0;width:10px;z-index:3;cursor:col-resize;touch-action:none;outline:0}
+.rz-col::after{content:"";position:absolute;top:22%;bottom:22%;right:0;width:1px;background:#b9c4dc;transition:background-color .12s,top .12s,bottom .12s,width .12s}
+.rz-col:hover::after,.rz-col:focus-visible::after,.rz-col.on::after{top:0;bottom:0;right:0;width:3px;border-radius:2px;background:var(--brand)}
+.rz-row{position:absolute;left:0;right:0;bottom:-3px;height:7px;z-index:2;cursor:row-resize;touch-action:none}
+.rz-row:hover,.rz-row.on{background:linear-gradient(to bottom,transparent 2px,rgba(37,99,235,.55) 2px,rgba(37,99,235,.55) 5px,transparent 5px)}
+body.rz-drag{user-select:none;-webkit-user-select:none}
+body.rz-x,body.rz-x *{cursor:col-resize!important}
+body.rz-y,body.rz-y *{cursor:row-resize!important}
+.btable[data-rz]{min-width:100%}
+.btable[data-rz] td,.btable[data-rz] th{overflow:hidden;text-overflow:ellipsis}
+@media (pointer:coarse){.rz-col{width:18px}.rz-row{height:14px;bottom:-7px}}
+@media print{.rz-col,.rz-row{display:none}}
