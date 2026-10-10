@@ -17,33 +17,23 @@
   const S = B.state, C = B.calc, esc = B.esc, $ = B.money;
 
   B.pages.summary = {
-    title: 'Billing summary',
+    title: 'Billing Summary',
     desc: 'What you are paying for, what is due next, and what you have paid before.',
-    actions: '<button type="button" class="btn btn-brand-o rounded-pill" id="exampleBtn" aria-pressed="false">Show an example</button>',
-    bind(root) {
-      example = false; tab = 'current';
-      const b = root.querySelector('#exampleBtn');
-      b.onclick = () => {
-        example = !example; b.textContent = example ? 'Show my real billing' : 'Show an example'; b.setAttribute('aria-pressed', example);
-        if (host) { tab = 'current'; draw(); }
-      };
-    },
+    bind() { example = false; tab = 'current'; },
     render(el) { host = el; draw(); }
   };
 
   function draw() {
-    host.innerHTML = `<div class="bcard overflow-hidden">
-      <div class="tabs" role="tablist" aria-label="Billing views">
-        <button type="button" role="tab" class="tab ${tab === 'current' ? 'active' : ''}" aria-selected="${tab === 'current'}" data-tab="current">Current billing</button>
-        <button type="button" role="tab" class="tab ${tab === 'history' ? 'active' : ''}" aria-selected="${tab === 'history'}" data-tab="history">Invoice history</button>
-      </div><div class="p-3" role="tabpanel" id="panel"></div></div>`;
-    host.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { tab = b.dataset.tab; draw(); });
-    const panel = host.querySelector('#panel');
-    tab === 'current' ? current(panel) : history(panel);
+    if (tab === 'history') {
+      host.removeAttribute('data-plain');
+      host.innerHTML = `<div class="d-grid gap-3"><div><button type="button" class="btn btn-brand-o btn-sm" id="backSum">\u2190 Back to summary</button></div><div class="bcard overflow-hidden"><div class="p-3" id="panel"></div></div></div>`;
+      host.querySelector('#backSum').onclick = () => { tab = 'current'; draw(); };
+      return history(host.querySelector('#panel'));
+    }
+    current(host);
   }
 
   const r2 = n => Math.round(n * 100) / 100;
-  const QA = [['plan', 'Change plan', 'plan'], ['lic', 'Manage licences', 'licences'], ['addon', 'Add an add-on', 'addons'], ['pay', 'Update payment', 'payment'], ['inv', 'View invoices', 'invoices']];
 
   /* One object per mode, so the page below draws real billing and the sample account the same way. */
   function model() {
@@ -82,85 +72,73 @@
   B.refreshSummary = () => { if (host && host.isConnected) draw(); };
 
   function current(p) {
-    const v = model(), bd = v.bd, hasCard = S.methods.length > 0, spare = Math.max(0, v.seats - v.assigned);
-    const tile = (label, val, note, cls = '') => `<div class="tile ${cls}"><div class="eyebrow">${label}</div><div class="t-val ${val.length > 14 ? 'sm' : ''}">${val}</div><div class="t-note">${note}</div></div>`;
-    const bk = (n, sub, val, cls = '') => `<div class="bk-row ${cls}"><div><div class="bk-n">${n}</div>${sub ? `<div class="bk-s">${sub}</div>` : ''}</div><div class="bk-v">${val}</div></div>`;
-    const usageSub = v.overage.length ? v.overage.map(o => `${esc(o.name)}: ${B.num(o.qty)} ${esc(o.unit)} over`).join(' · ') : 'Within every included allowance';
-    p.innerHTML = `<div class="d-grid gap-3">
-      ${v.sample ? `<div class="alert-warn" role="status"><div><h2>${esc(EX.banner.split('. ')[0])}.</h2><p>${esc(EX.banner.slice(EX.banner.indexOf('. ') + 2))}</p></div></div>`
-        : hasCard ? '' : `<div class="alert-warn" role="alert"><div><h2>No payment method saved</h2><p>Everything works today, but the next bill has nothing to charge and the account will go on hold when it is due. Saving a card now avoids that.</p></div><button type="button" class="btn btn-brand-o" data-card>Add a card</button></div>`}
+    const v = model(), hasCard = S.methods.length > 0, spare = Math.max(0, v.seats - v.assigned);
+    const plan = S.plans.find(x => x.name === v.planName), feats = (plan ? plan.features : ['Calling and messaging', 'Voicemail', 'Mobile and desktop apps', 'Support']).slice(0, 4);
+    const estimate = v.sample ? EX.estimate : C.estimate(), usedPct = v.seats ? Math.round(v.assigned / v.seats * 100) : 0, ar = S.autoRecharge;
+    const lastPay = v.sample ? { amount: v.invoices[0].amount, date: v.invoices[0].date } : S.activity.find(a => a.status === 'Paid');
+    const tick = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+    const kpi = (ico, tone, label, val, sub, badge, info) => `<div class="dash-kpi"><span class="dash-ico ${tone}">${B.icon(ico, 20)}</span><div class="dash-kpi-b"><div class="dash-kl">${label}${badge || ''}${info ? `<span class="dash-info" title="${esc(info)}" tabindex="0" aria-label="${esc(info)}">${B.icon('info', 14)}</span>` : ''}</div><div class="dash-kv">${val}</div><div class="dash-ks">${sub}</div></div></div>`;
+    const row = (act, ico, label, val, badge) => `<button type="button" class="act-row" data-a="${act}"><span class="act-i">${B.icon(ico, 16)}</span><span class="act-l">${label}</span><span class="act-v">${val}</span>${badge}${B.icon('chev', 13)}</button>`;
+    const inv = v.sample ? v.invoices.map(i => ({ id: i.id, date: i.date, due: B.dueDate(i.date), amount: i.amount, status: i.status, description: 'Sample invoice' })) : S.invoices.filter(i => i.status !== 'Draft').map(i => ({ id: i.id, date: i.date, due: B.dueDate(i.date), amount: i.amount, status: i.status, description: `Invoice for ${i.period || 'the billing period'}` }));
+    p.setAttribute('data-plain', '');
+    const tile = (cls, ico, label, val, sub) => `<div class="sm-tile ${cls}"><span class="sm-ti">${B.icon(ico, 18)}</span><div><div class="sm-tl">${label}</div><div class="sm-tv">${val}</div>${sub ? `<div class="sm-ts">${sub}</div>` : ''}</div></div>`;
+    const th = t => `<th scope="col"><span class="th-static">${t}</span></th>`;
+    const cards = v.sample ? [{ brand: 'Visa', last4: '4242', exp: 'sample', primary: true }] : S.methods;
+    p.innerHTML = `<div class="sm">
+      ${v.sample ? `<div class="sm-alert" role="status"><div><h2>${esc(EX.banner.split('. ')[0])}.</h2><p>${esc(EX.banner.slice(EX.banner.indexOf('. ') + 2))}</p></div></div>`
+        : hasCard ? '' : `<div class="sm-alert" role="alert"><div><h2>No payment method saved</h2><p>Everything works today, but the next bill has nothing to charge. Saving a card now avoids that.</p></div><button type="button" class="btn btn-brand-o btn-sm" data-card>Add a card</button></div>`}
 
-      <section aria-label="Billing at a glance"><div class="row g-3">
-        <div class="col-12 col-sm-6 col-xl-3">${tile('Current plan', esc(v.planName), `${v.seats} seats · ${$(v.rate)} a seat${v.scheduled ? ` · moving to ${esc(v.scheduled.name)} on ${B.fmtDate(v.scheduled.effective)}` : ''}`, 'accent')}</div>
-        <div class="col-12 col-sm-6 col-xl-3">${tile('Next bill due', esc(v.next), `Estimated ${$(bd.total)} including usage and tax`)}</div>
-        <div class="col-12 col-sm-6 col-xl-3">${tile('Billing cycle', esc(v.cycle), `Period ${esc(v.period)}`)}</div>
-        <div class="col-12 col-sm-6 col-xl-3">${tile('Licences', `${v.assigned} of ${v.seats}`, `Assigned; ${spare ? spare + ' spare' : 'none spare'}`)}</div>
-        <div class="col-12 col-sm-6 col-xl-4">${tile('Active add-ons', String(v.rows.length), v.rows.length ? `${$(bd.addons)} a month` : 'None on the plan yet')}</div>
-        <div class="col-12 col-sm-6 col-xl-4">${tile('Available credit', $(v.credit), 'Shared across the company; pays for usage beyond the plan')}</div>
-        <div class="col-12 col-sm-6 col-xl-4">${tile('Outstanding amount', $(v.outstanding), v.outstanding > 0 ? `${v.outstandingCount} unpaid invoice${v.outstandingCount === 1 ? '' : 's'}: Failed, Pending or Overdue` : 'Nothing owed. You are paid up.')}</div>
-      </div></section>
+      <section class="sm-card" aria-labelledby="cp0">
+        <div class="sm-hd"><div><h2 class="sm-h" id="cp0">Current plan</h2><p class="sm-sub">${esc(v.planName)} \u00b7 ${v.seats} seat${v.seats === 1 ? '' : 's'} \u00b7 ${$(v.rate)} a seat per month${v.scheduled ? ` \u00b7 moves to <b>${esc(v.scheduled.name)}</b> on ${B.fmtDate(v.scheduled.effective)}` : ''}</p></div>
+          <button type="button" class="btn btn-brand-o btn-sm" data-a="plan">Change plan</button></div>
+        <div class="sm-tiles">
+          ${tile('teal', 'wallet', 'Next bill estimate', $(estimate), `${v.seats} seat${v.seats === 1 ? '' : 's'} \u00d7 ${$(v.rate)}${v.rows.length ? ' + add-ons' : ''}`)}
+          ${tile('', 'statement', 'Next bill date', esc(v.next), 'When the card on file is charged.')}
+          ${tile('amber', 'refresh', 'Billing period', `<span class="sm-tv-sm">${esc(v.period)}</span>`, `Billed ${esc(v.cycle.toLowerCase())}.`)}
+          ${tile('', 'licences', 'Licences', `${v.assigned} of ${v.seats}`, `Assigned: ${v.assigned} \u00b7 Free: ${spare}`)}
+        </div>
+        <p class="sm-foot">Credit balance: <b>${$(v.credit)}</b></p>
+      </section>
 
       <div class="row g-3">
-        <div class="col-12 col-xl-7"><section class="bsub p-3 h-100" aria-labelledby="bb">
-          <h2 class="sub-title" id="bb">Billing breakdown</h2><p class="sub-desc mb-2">How the next bill adds up.</p>
-          ${bk('Plan charges', `${v.assigned} assigned seat${v.assigned === 1 ? '' : 's'} × ${$(v.rate)}`, $(bd.plan))}
-          ${bk('Licence charges', `${spare} unassigned seat${spare === 1 ? '' : 's'} × ${$(v.rate)}`, $(bd.licence))}
-          ${bk('Add-on charges', `${v.rows.length} active add-on${v.rows.length === 1 ? '' : 's'}`, $(bd.addons))}
-          ${bk('Usage charges', usageSub, $(bd.usage))}
-          ${bk('Discounts', 'None applied this period', $(-bd.discount))}
-          ${bk('Taxes', `GST 5% + State levy 2% on ${$(bd.subtotal)}`, $(bd.tax))}
-          ${bk('Total', '', $(bd.total), 'bk-total')}
-        </section></div>
-        <div class="col-12 col-xl-5"><section class="bsub p-3 h-100" aria-labelledby="nb">
-          <h2 class="sub-title" id="nb">Next bill</h2><p class="sub-desc">Charged to the card on file on the payment date.</p>
-          <div class="nb-amount my-3">${$(bd.total)}</div>
-          <dl class="kv mb-3"><dt>Billing period</dt><dd>${esc(v.period)}</dd><dt>Next payment date</dt><dd>${esc(v.next)}</dd><dt>Payment method</dt><dd>${v.pay.last4 ? esc(v.pay.text) : '<span class="text-muted fw-normal">No card saved</span>'}</dd></dl>
-          <div class="d-flex flex-wrap gap-2"><button type="button" class="btn btn-brand-o" data-a="details" ${v.sample ? 'disabled' : ''}>View details</button><button type="button" class="btn btn-brand" data-a="plan">Change plan</button></div>
-        </section></div>
+        <div class="col-12 col-lg-6"><section class="sm-card h-100" aria-labelledby="ao">
+          <div class="sm-hd"><div><h2 class="sm-h" id="ao">Add-ons on the plan</h2><p class="sm-sub">What you hold, billed with each plan: numbers, storage, AI and more.</p></div><button type="button" class="btn btn-brand-o btn-sm" data-a="addon">Add ons</button></div>
+          <div class="table-responsive"><table class="table btable sm-t align-middle mb-0"><caption class="visually-hidden">Add-ons on the plan</caption>
+            <thead><tr>${th('Add-ons')}${th('Quantity \u00d7 paid')}${th('Status')}</tr></thead>
+            <tbody>${v.rows.length ? v.rows.map(r => `<tr><td class="fw-semibold">${esc(r.name)}</td><td>${r.qty} \u00d7 ${$(r.price)} = <b>${$(r.qty * r.price)}</b></td><td>${B.badge('Active', 'ok')}</td></tr>`).join('')
+              : '<tr><td colspan="3" class="text-muted">No add-ons on this plan yet. Try them from Add-ons.</td></tr>'}</tbody></table></div></section></div>
+        <div class="col-12 col-lg-6"><section class="sm-card h-100" aria-labelledby="pd">
+          <div class="sm-hd"><div><h2 class="sm-h" id="pd">Payment details</h2><p class="sm-sub">${cards.length ? 'The card charged for each bill. You can pay by card or by credit.' : 'No card saved. Add one so your plan can renew and numbers can be bought without interruption.'}</p></div><button type="button" class="btn btn-brand-o btn-sm" data-a="pay" ${v.sample ? 'disabled' : ''}>Edit payment details</button></div>
+          ${cards.length ? `<div class="table-responsive"><table class="table btable sm-t align-middle mb-0"><caption class="visually-hidden">Payment methods</caption>
+            <thead><tr>${th('Card')}${th('Expires')}${th('Status')}</tr></thead>
+            <tbody>${cards.length ? cards.map(c => `<tr><td class="fw-semibold">${esc(c.brand)} \u2022\u2022\u2022\u2022 ${esc(c.last4)}</td><td>${esc(c.exp)}</td><td>${B.badge(c.primary ? 'Primary' : 'Saved', c.primary ? 'ok' : 'muted')}</td></tr>`).join('')
+              : ''}</tbody></table></div>` : ''}</section></div>
       </div>
 
-      <div class="row g-3">
-        <div class="col-12 col-xl-7"><section class="bsub overflow-hidden h-100" aria-labelledby="ri">
-          <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 p-3 pb-2"><div><h2 class="sub-title" id="ri">Recent invoices</h2><p class="sub-desc">Your latest five. Open one for the full invoice.</p></div>
-            <button type="button" class="btn btn-brand-o btn-sm" data-a="inv">All invoices</button></div>
-          <div class="table-responsive"><table class="table btable align-middle mb-0"><caption class="visually-hidden">Recent invoices</caption>
-            <thead><tr><th scope="col"><span class="th-static">Invoice</span></th><th scope="col"><span class="th-static">Date</span></th><th scope="col" class="d-none d-md-table-cell"><span class="th-static">Due date</span></th><th scope="col"><span class="th-static">Amount</span></th><th scope="col"><span class="th-static">Status</span></th><th scope="col" class="text-end"><span class="th-static">Actions</span></th></tr></thead>
-            <tbody>${v.invoices.map(i => `<tr><td><span class="mono fw-bold">${esc(i.id)}</span></td><td class="text-nowrap">${B.fmtDate(i.date)}</td><td class="text-nowrap d-none d-md-table-cell">${B.fmtDate(B.dueDate(i.date))}</td><td><strong>${$(i.amount)}</strong></td><td>${B.badge(i.status, B.statusKind(i.status))}</td>
-              <td class="text-end">${v.sample ? '<span class="text-muted small">Sample</span>' : `<div class="d-flex flex-nowrap gap-1 justify-content-end">${B.actBtn('view', i.id, 'eye', `View invoice ${i.id}`)}${B.actBtn('download', i.id, 'download', `Download invoice ${i.id}`)}</div>`}</td></tr>`).join('')}</tbody></table></div>
-        </section></div>
-        <div class="col-12 col-xl-5 d-grid gap-3 align-content-start">
-          <section class="bsub p-3" aria-labelledby="pd">
-            <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2"><div><h2 class="sub-title" id="pd">Payment details</h2><p class="sub-desc">The card used for renewals and top-ups.</p></div>${B.badge(v.pay.status[0], v.pay.status[1])}</div>
-            ${v.pay.last4 ? `<div class="pm-line mb-3"><span class="pm-chip">${B.icon('card', 18)}</span><div><div class="fw-semibold">${esc(v.pay.text)}</div><div class="text-muted small">Last 4 digits ${esc(v.pay.last4)} · expires ${esc(v.pay.exp)}</div></div></div>${S.failed > 0 && !v.sample ? `<p class="small text-muted">${$(S.failed)} in failed payments needs another attempt.</p>` : ''}`
-              : '<p class="text-muted small">No card saved. Add one so your plan can renew without interruption.</p>'}
-            <button type="button" class="btn btn-brand-o" data-a="pay" ${v.sample ? 'disabled' : ''}>${v.pay.last4 ? 'Update payment' : 'Add a card'}</button>
-          </section>
-          ${B.autoRechargeCard(v.sample)}
-          <section class="bsub p-3" aria-labelledby="qa"><h2 class="sub-title mb-3" id="qa">Quick actions</h2>
-            <div class="qa-grid">${QA.map(q => `<button type="button" class="qa-btn" data-a="${q[0]}">${B.icon(q[2], 16)}<span>${q[1]}</span></button>`).join('')}</div></section>
-        </div>
-      </div>
+      <section class="sm-card" aria-labelledby="ri"><div class="sm-hd"><div><h2 class="sm-h" id="ri">Invoice history</h2><p class="sm-sub">The invoices you are paying for, newest first. Open one for the full invoice.</p></div>
+          <button type="button" class="btn btn-brand-o btn-sm" data-a="inv">Invoices</button></div>
+        <div id="riTable"></div></section></div>`;
 
-      <section class="bsub overflow-hidden" aria-labelledby="ao">
-        <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 p-3">
-          <div><h2 class="sub-title" id="ao">Add-ons on the plan</h2><p class="sub-desc">What you hold now, billed with the plan each period. Numbers, storage, AI and per-seat extras.</p></div>
-          <div class="d-flex flex-wrap gap-2"><button type="button" class="btn btn-brand-o" id="aoToggle" aria-expanded="false" aria-controls="aoBody">View details (${v.rows.length})</button><button type="button" class="btn btn-brand-o" data-a="addon">Add an add-on</button></div>
-        </div>
-        <div class="table-responsive" id="aoBody" hidden><table class="table btable align-middle"><caption class="visually-hidden">Add-ons on the plan</caption>
-          <thead><tr><th scope="col"><span class="th-static">Add-on</span></th><th scope="col"><span class="th-static">Quantity × Rate</span></th><th scope="col" class="text-end"><span class="th-static">Amount</span></th></tr></thead>
-          <tbody>${v.rows.length ? v.rows.map(r => `<tr><td><div class="fw-semibold">${esc(r.name)}</div>${r.sub ? `<div class="text-muted small">${esc(r.sub)}</div>` : ''}</td><td class="mono">${r.qty} × ${$(r.price)}</td><td class="text-end fw-bold">${$(r.qty * r.price)}</td></tr>`).join('') : '<tr><td colspan="3" class="text-muted small">No add-ons on this plan yet. Buy them from Add-ons.</td></tr>'}</tbody></table></div>
-      </section></div>`;
+    B.DataTable(p.querySelector('#riTable'), {
+      caption: 'Invoice history', toolbar: false, rows: () => inv, searchKeys: ['id', 'status', 'description'], pageSize: 5, idKey: 'id', emptyText: 'No invoices yet.',
+      columns: [
+        { key: 'date', label: 'Date', render: r => `<span class="text-nowrap">${B.fmtDate(r.date)}</span>` },
+        { key: 'amount', label: 'Amount', render: r => `<strong>${$(r.amount)}</strong>` },
+        { key: 'status', label: 'Status', render: r => B.badge(r.status, B.statusKind(r.status)) },
+        { key: 'description', label: 'Description', hide: 'md', render: r => `<span class="sm-desc">${esc(r.description)}</span>` },
+        { key: 'id', label: 'Invoice ID', align: 'end', render: r => v.sample ? `<span class="mono">${esc(r.id)}</span>` : `<button type="button" class="btn btn-link p-0 mono" data-act="view" data-id="${esc(r.id)}" title="Open invoice">${esc(r.id)}</button>` }
+      ],
+      onAction: (a, r) => { const i = S.invoices.find(x => x.id === r.id); if (i) B.showInvoice(i); }
+    });
 
-    host.querySelector('#aoToggle').onclick = e => { const b = host.querySelector('#aoBody'), open = b.hidden; b.hidden = !open; e.currentTarget.setAttribute('aria-expanded', open); e.currentTarget.textContent = open ? 'Hide details' : `View details (${v.rows.length})`; };
     const act = {
-      details: () => B.billDetails(), plan: () => B.go('plan'), ar: () => B.go('credit-payment?tab=auto'), inv: () => B.go('invoices'), lic: () => B.go('licences-resources'),
-      addon: () => B.openAddAddon(draw), pay: () => (v.pm ? B.openCardForm(draw, v.pm) : B.openCardForm(draw))
+      details: () => B.billDetails(), plan: () => B.go('plan'), ar: () => B.go('credit-payment?tab=auto'), inv: () => B.go('invoices'), lic: () => B.go('licences-resources'), stm: () => B.go('statement'),
+      addons: () => B.go('add-ons'), addon: () => B.go('add-ons'), pay: () => B.go('credit-payment'), hist: () => { tab = 'history'; draw(); },
+      credits: () => (B.openAddCredits ? B.openAddCredits(draw) : B.go('credit-payment'))
     };
     p.onclick = e => {
       const a = e.target.closest('[data-a]');
       if (a && !a.disabled) { act[a.dataset.a](); return; }
-      const r = e.target.closest('[data-act][data-id]');
-      if (r && !v.sample) { const inv = S.invoices.find(i => i.id === r.dataset.id); if (inv) r.dataset.act === 'view' ? B.showInvoice(inv) : B.downloadInvoice(inv); return; }
       if (e.target.closest('[data-card]')) B.openCardForm(draw);
     };
   }

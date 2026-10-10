@@ -20,7 +20,7 @@
     'current plan': ['Plan', 'blue'], 'next bill due': ['Upcoming', 'blue'], 'billing cycle': ['Recurring', 'teal'], 'available credit': ['Wallet', 'green'], 'outstanding amount': ['Due', 'red'],
     'billing breakdown': ['Charges', 'amber'], 'recent invoices': ['Latest', 'blue'], 'quick actions': ['Shortcuts', 'violet'], 'add-ons on the plan': ['Extras', 'teal'], 'payment details': ['Billing', 'violet'], 'top-up now': ['Instant', 'green'],
     'low balance settings': ['Alerts', 'amber'], 'assigned licences': ['Seats', 'blue'], 'resources': ['Usage', 'teal'], 'transaction ledger': ['Ledger', 'slate'],
-    'billing information': ['Account', 'violet'], 'this month': ['Usage', 'teal'], 'auto recharge': ['Auto', 'green'], 'auto recharge activity': ['History', 'slate'], 'available minutes': ['Voice', 'blue'], 'available fax': ['Fax', 'slate'], 'available sms/mms': ['Messaging', 'amber'], 'ai agents': ['AI', 'pink'], 'sell': ['Sales', 'green'], 'contact centre': ['Support', 'amber'], 'support': ['Care', 'teal']
+    'billing information': ['Account', 'violet'], 'this month': ['Usage', 'teal'], 'plan usage balance': ['Allowance', 'green'], 'spending alerts': ['Alerts', 'amber'], 'auto recharge': ['Auto', 'green'], 'auto recharge activity': ['History', 'slate'], 'available minutes': ['Voice', 'blue'], 'available fax': ['Fax', 'slate'], 'available sms/mms': ['Messaging', 'amber'], 'ai agents': ['AI', 'pink'], 'sell': ['Sales', 'green'], 'contact centre': ['Support', 'amber'], 'support': ['Care', 'teal']
   };
   const CATS = { phone: ['Phone', 'blue'], ai: ['AI', 'pink'], sell: ['Sales', 'green'], cc: ['Contact centre', 'amber'], support: ['Support', 'teal'] };
   /* add-on cards: first matching keyword wins */
@@ -48,6 +48,7 @@
   const HEADS = '.tile .eyebrow, .ao-card .ao-name, .res-card > div:first-child > strong, .plan-card h3, .bsub > strong.small, #view .sub-title';
 
   function put(h) {
+    if (h.closest('[data-plain]')) return;
     if (h.querySelector('.sbadge, .badge:not(.cb), .sbadge')) { h.classList.add('cb-host'); return; }   // already badged
     const text = key(h); if (!text) return;
     const [label, tone] = lookup(h, text), old = h.querySelector(':scope > .cb');

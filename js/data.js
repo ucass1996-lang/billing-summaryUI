@@ -471,6 +471,17 @@ window.Billing = window.Billing || { pages: {} };
    ['Voice Biometrics', 'Verify callers by voice instead of security questions.', 12, 'per seat', 'Coming soon']]
     .forEach((a, i) => S.addons.push({ id: 14 + i, name: a[0], description: a[1], price: a[2], unit: a[3], qty: 0, freq: 'Monthly', status: a[4] }));
 
+  // more add-ons from the reference catalogue (sample prices; the ones not launched yet are "Coming soon")
+  [['Extra International Minutes', 'Additional international calling minutes for calling abroad.', 20, 'per seat', 'Available'],
+   ['AI Voice Agent', 'AI-led voice assistance with transcription, summaries and agent support.', 49, 'per seat', 'Available'],
+   ['AI Chat Agent', 'AI chat support across your digital channels.', 25, 'per seat', 'Available'],
+   ['Internet Fax', 'Send and receive faxes by email, with a fax number.', 2, 'per number', 'Available'],
+   ['Spam Monitoring', 'Watch your numbers so you know if they get flagged as spam.', 5, 'per number', 'Coming soon'],
+   ['Messaging Compliance Pack', 'Meets carrier rules so your texts are delivered.', 18, 'per workspace', 'Coming soon'],
+   ['Conference Room Device', 'A phone for meeting rooms and shared spaces.', 8, 'per device', 'Coming soon'],
+   ['Large Meeting', 'Hold large meetings with extra participants.', 19, 'per host', 'Coming soon']]
+    .forEach((a, i) => S.addons.push({ id: 17 + i, name: a[0], description: a[1], price: a[2], unit: a[3], qty: 0, freq: 'Monthly', status: a[4] }));
+
   // who each invoice was raised to (company or cost centre)
   const customers = ['Acme Corp HQ', 'Acme Sales (CC-101)', 'Acme Support (CC-102)', 'Acme Development (CC-103)'];
   S.invoices.forEach((i, n) => { i.customer = customers[n % customers.length]; });

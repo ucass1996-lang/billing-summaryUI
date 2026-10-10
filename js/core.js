@@ -70,12 +70,17 @@
   B.statusKind = s => ({ Paid: 'ok', Active: 'ok', Enabled: 'ok', Failed: 'bad', Overdue: 'bad', Refunded: 'warn', Credit: 'info', Disabled: 'muted', Inactive: 'muted', Trial: 'info', Available: 'info', Pending: 'warn', Suspended: 'bad' }[s] || 'muted');
 
   /* Page header. `controls` (e.g. a range select) sits under the title; the header is pinned below the top bar unless `sticky: false`. */
+  const PAGE_ICON = { summary: 'summary', usage: 'usage', plan: 'plan', 'licences-resources': 'licences', 'credit-payment': 'wallet', invoices: 'invoices', statement: 'statement', 'add-ons': 'addons', 'cost-centres': 'cost', 'modules-access': 'modules' };
+  const HEAD_ART = '<svg class="ph-art" viewBox="0 0 160 110" aria-hidden="true" focusable="false"><circle cx="118" cy="58" r="44" fill="#e6efff"/><circle cx="30" cy="30" r="6" fill="#dbe7ff"/><circle cx="146" cy="18" r="4" fill="#cfe0ff"/><path d="M132 40c18-4 26 10 20 24-12 2-22-6-20-24z" fill="#cdeede"/><rect x="50" y="10" width="64" height="82" rx="9" fill="#fff" stroke="#c9d9fb" stroke-width="2"/><g stroke="#b7ccf7" stroke-width="3" stroke-linecap="round"><path d="M62 28h40M62 40h40M62 52h24"/></g><circle cx="102" cy="66" r="13" fill="#2f6bff"/><text x="102" y="71" text-anchor="middle" font-size="15" font-weight="700" fill="#fff" font-family="Inter,sans-serif">$</text><g fill="#2f6bff"><rect x="96" y="82" width="8" height="12" rx="2" opacity=".55"/><rect x="108" y="76" width="8" height="18" rx="2" opacity=".75"/><rect x="120" y="68" width="8" height="26" rx="2"/></g></svg>';
+  const DOC_USD = '<svg width="34" height="34" viewBox="0 0 32 32" fill="none" aria-hidden="true" focusable="false"><path d="M8 4h11l6 6v15a3 3 0 01-3 3H8a3 3 0 01-3-3V7a3 3 0 013-3z" fill="#2f6bff"/><path d="M19 4l6 6h-4a2 2 0 01-2-2z" fill="#8db2ff"/><path d="M10 14h8M10 18h5" stroke="#fff" stroke-width="2" stroke-linecap="round"/><circle cx="22" cy="23" r="6" fill="#fff" stroke="#2f6bff" stroke-width="1.6"/><text x="22" y="26.3" text-anchor="middle" font-size="9" font-weight="700" fill="#2f6bff" font-family="Inter,sans-serif">$</text></svg>';
   B.head = ({ title, desc, actions, controls, key }) => {
     const c = B.crumbs ? B.crumbs(key) : ['Billing'];
-    const bc = `<nav class="bc" aria-label="Breadcrumb"><ol>${c.map((x, i) => `<li ${i === c.length - 1 ? 'aria-current="page"' : ''}>${B.esc(x)}</li>`).join('')}</ol></nav>`;
+    const bc = `<nav class="bc" aria-label="Breadcrumb"><ol><li class="bc-home" aria-hidden="true">${B.icon('home', 15)}</li>${c.map((x, i) => `<li ${i === c.length - 1 ? 'aria-current="page"' : ''}>${B.esc(x)}</li>`).join('')}</ol></nav>`;
+    const next = B.state && B.state.period ? B.fmtDate(B.state.period.next) : '';
     return `<div class="page-head">
+       ${bc}
        <div class="page-head-row">
-         <div class="page-head-text">${bc}<h1>${title}</h1><p>${desc}</p></div>
+         <div class="page-head-text ph-main"><span class="ph-ico">${key === 'summary' ? DOC_USD : B.icon(PAGE_ICON[key] || 'summary', 30)}</span><div class="ph-t"><h1>${title}</h1><p>${desc}</p></div></div>
          <div class="page-head-actions no-print">${actions || ''}</div></div>
        ${controls ? `<div class="page-head-controls no-print">${controls}</div>` : ''}</div>`;
   };
@@ -90,10 +95,25 @@
   };
 
   /* Tabs that show or hide sections that are already on the page, so nothing re-renders and tables keep their state. */
-  B.sectionTabs = ({ anchor, groups, labels, key }) => {
+  const SV = d => `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${d}</svg>`;
+  B.pillIcons = {
+    doc: SV('<rect x="5" y="3.5" width="14" height="17" rx="2.5"/><path d="M8.5 8.5h7M8.5 12h7M8.5 15.5h4"/>'),
+    hash: SV('<rect x="3.5" y="3.5" width="17" height="17" rx="3.5"/><path d="M10 7.5l-1 9M15 7.5l-1 9M7.5 10.5h9M7.5 13.5h9"/>'),
+    db: SV('<ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6"/>'),
+    spark: SV('<path d="M12 3l2 5.5L19.5 10 14 12l-2 5.5L10 12 4.5 10 10 8.5z"/><path d="M18.5 16.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/>'),
+    fax: SV('<path d="M7 9V4h10v5M7 17H5a1.5 1.5 0 01-1.5-1.5v-5A1.5 1.5 0 015 9h14a1.5 1.5 0 011.5 1.5v5A1.5 1.5 0 0119 17h-2"/><rect x="7" y="14" width="10" height="6.5" rx="1"/>'),
+    wallet: SV('<path d="M4 7.5A2.5 2.5 0 016.5 5H18v3"/><rect x="4" y="8" width="16" height="11" rx="2.5"/><circle cx="16" cy="13.5" r="1.1"/>'),
+    clock: SV('<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>'),
+    chart: SV('<path d="M4 20V5M4 20h16"/><path d="M8 16v-4M12 16V8M16 16v-6"/>'),
+    list: SV('<path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/>'),
+    cal: SV('<rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/>'),
+    grid: SV('<rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/>')
+  };
+  B.sectionTabs = ({ anchor, groups, labels, key, icons }) => {
     B._st = B._st || {}; let cur = B._st[key] || 0; if (cur >= groups.length) cur = 0;
     const strip = document.createElement('div'); strip.className = 'bcard pg-tabs no-print';
-    strip.innerHTML = `<div class="tabs" role="tablist" aria-label="Page sections">${labels.map((l, i) => `<button type="button" role="tab" class="tab" data-st="${i}">${B.esc(l)}</button>`).join('')}</div>`;
+    if (icons) strip.classList.add('pg-pills');
+    strip.innerHTML = `<div class="tabs" role="tablist" aria-label="Page sections">${labels.map((l, i) => `<button type="button" role="tab" class="tab" data-st="${i}">${icons && icons[i] ? `<span class="pill-i">${icons[i]}</span>` : ''}<span>${B.esc(l)}</span></button>`).join('')}</div>`;
     anchor.parentNode.insertBefore(strip, anchor);
     const show = i => {
       B._st[key] = i; groups.forEach((g, n) => g.forEach(el => { el.hidden = n !== i; }));
@@ -226,8 +246,8 @@
       ctl = `<input class="form-control" id="${id}" name="${f.name}" type="${f.type === 'number' ? 'text' : (f.type || 'text')}"${f.type === 'number' ? ' inputmode="decimal"' : ''} value="${v}"${f.placeholder ? ` placeholder="${B.esc(f.placeholder)}"` : ''}${f.autocomplete ? ` autocomplete="${f.autocomplete}"` : ' autocomplete="off"'}${f.readonly ? ' readonly' : ''}${desc}>`;
     }
     const fb = `<div class="invalid-feedback" data-fb="${f.name}"></div>`;
-    if (f.icon) ctl = `<div class="input-icon">${f.icon}${ctl.replace('class="form-control"', 'class="form-control has-icon"')}${fb}</div>`;
-    return `<div class="${col}"><label class="form-label" for="${id}">${B.esc(f.label)}${f.required ? ' <span class="text-danger" aria-hidden="true">*</span>' : ''}</label>${ctl}${f.icon ? '' : fb}${f.help ? `<div class="form-text" id="${id}_h">${B.esc(f.help)}</div>` : ''}</div>`;
+    if (f.icon || f.iconRight) ctl = `<div class="input-icon">${f.icon || ''}${ctl.replace('class="form-control"', `class="form-control ${f.icon ? 'has-icon' : ''} ${f.iconRight ? 'has-icon-r' : ''}"`)}${f.iconRight ? `<span class="ii-r" id="${id}_ir" aria-hidden="true">${f.iconRight}</span>` : ''}${fb}</div>`;
+    return `<div class="${col}"><label class="form-label" for="${id}">${B.esc(f.label)}${f.required ? ' <span class="text-danger" aria-hidden="true">*</span>' : ''}</label>${ctl}${f.icon || f.iconRight ? '' : fb}${f.help ? `<div class="form-text" id="${id}_h">${B.esc(f.help)}</div>` : ''}</div>`;
   }
 
   /* Wires validation onto a <form>. Returns {values, validate}. Used by modals and inline forms. */
@@ -297,7 +317,7 @@
     const id = 'dt' + (++uid);
     const st = { q: '', filters: {}, from: '', to: '', min: '', max: '', sort: null, dir: null, page: 1, size: o.pageSize || 10 };
     const cols = o.columns;
-    const sizes = [10, 25, 50, 100];
+    const sizes = [10, 25, 50, 100].concat([st.size].filter(n => ![10, 25, 50, 100].includes(n))).sort((x, y) => x - y);
     const searchKeys = o.searchKeys || cols.filter(c => c.key !== '_act').map(c => c.key);
     const dateErr = () => st.from && st.to && st.from > st.to;
     /* the calendars refuse days that would make From later than To */
@@ -352,7 +372,7 @@
       <div class="table-responsive"><table class="table btable align-middle" aria-describedby="${id}cnt"><caption class="visually-hidden">${B.esc(o.caption || 'Data table')}</caption><thead></thead><tbody></tbody></table></div>
       <div class="dt-pager no-print"><div class="d-flex align-items-center gap-3 flex-wrap">
         <label class="d-flex align-items-center gap-2 mb-0">Rows per page <select class="form-select form-select-sm w-auto" data-size aria-label="Rows per page">${sizes.map(s => `<option ${s === st.size ? 'selected' : ''}>${s}</option>`).join('')}</select></label>
-        <span id="${id}cnt" data-count aria-live="polite"></span>${o.compactPager ? `<button type="button" class="btn-ico" data-refresh title="Refresh" aria-label="Refresh">${B.icon('refresh', 14)}</button>` : ''}</div>
+        <span id="${id}cnt" data-count aria-live="polite"></span><button type="button" class="btn-ico" data-refresh title="Refresh" aria-label="Refresh">${B.icon('refresh', 14)}</button></div>
         <nav aria-label="Pagination"><ul class="pagination pagination-sm" data-pages></ul></nav></div>`;
 
     const $ = s => host.querySelector(s);
@@ -388,11 +408,14 @@
       if (slice.length && tbody.offsetHeight) st.rowH = Math.max(st.rowH || 0, Math.ceil(tbody.offsetHeight / slice.length));
       if (!st.minH || (slice.length && !st.measured)) { st.minH = Math.ceil((thead.offsetHeight || 41) + st.size * (st.rowH || 49) + 2); st.measured = !!(slice.length && tbody.offsetHeight); }
       box.classList.add('dt-box'); box.style.setProperty('--dt-min', st.minH + 'px');
+      /* the table body may only be as tall as leaves room for the footer, so rows and pager fit on one screen (nothing overlaps) */
+      const vw = document.getElementById('view'), pg = host.querySelector('.dt-pager');
+      if (vw && pg && window.innerWidth >= 768) { const above = Math.max(0, box.getBoundingClientRect().top - host.getBoundingClientRect().top); box.style.setProperty('--dt-cap', Math.max(240, Math.min(640, vw.clientHeight - above - pg.offsetHeight - 56)) + 'px'); }
 
-      $('[data-count]').textContent = o.compactPager ? `${total} record(s)` : (total ? `${start + 1}–${start + slice.length} of ${total}` : '0 of 0');
+      $('[data-count]').textContent = total ? `${start + 1}–${start + slice.length} of ${total} record(s)` : '0 record(s)';
 
       const p = st.page, set = new Set([1, pages, p, p - 1, p + 1]);
-      const arr = [...set].filter(x => x >= 1 && x <= pages).sort((a, b) => a - b);
+      const arr = pages <= 7 ? Array.from({ length: pages }, (_, i) => i + 1) : [...set].filter(x => x >= 1 && x <= pages).sort((a, b) => a - b);
       const items = []; arr.forEach((x, i) => { if (i && x - arr[i - 1] > 1) items.push('…'); items.push(x); });
       const li = (label, page, dis, aria, act) => `<li class="page-item ${dis ? 'disabled' : ''} ${act ? 'active' : ''}"><button type="button" class="page-link" ${dis ? 'disabled' : ''} data-page="${page}" aria-label="${aria}" ${act ? 'aria-current="page"' : ''}>${label}</button></li>`;
       pagesEl.innerHTML = li('«', 1, p === 1, 'First page') + li('‹', p - 1, p === 1, 'Previous page') +

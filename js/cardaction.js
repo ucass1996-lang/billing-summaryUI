@@ -68,6 +68,7 @@
   function enhance(root) {
     root.querySelectorAll(CARDS).forEach(card => {
       if (card.dataset.ca) return; card.dataset.ca = '1';
+      if (card.closest('[data-plain]')) return;
       card.classList.add('hv-card');
       const col = TONES[toneOf(card)] || TONES.brand; card.style.setProperty('--hv', col);
       addButton(card);

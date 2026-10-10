@@ -1,18 +1,26 @@
-/* Plan Summary: current plan, allowances, plan comparison, extras, and seat/number/storage/AI panel. */
+/* Plan Summary: one page. Current plan, AI allowances beside what the plan includes, then the seat / DID / storage / AI panel with
+   a cost-centre allocation per seat. Plan comparison and extras sit in collapsible sections at the bottom. */
 (function (B) {
   const S = B.state, C = B.calc, esc = B.esc, $ = B.money;
-  let host, panel = 'licence', featAll = false;
+  let host, panel = 'licence';
+  const sel = new Set();   // seats ticked for a bulk cost-centre change
 
   S.cancelAt = S.cancelAt || null;
+  /* sample data for the DID(s) and AI tabs */
+  S.dids = S.dids || [
+    { id: 1, number: '+1 939 814 8021', flag: 'PR', country: 'Puerto Rico', from: '2026-09-07', to: '2026-11-06', cost: 0 },
+    { id: 2, number: '+1 415 555 0142', flag: 'US', country: 'United States', from: '2026-09-07', to: '2026-11-06', cost: 0 }
+  ];
+  S.aiAgents = S.aiAgents || [];
 
   /* After a plan is picked and confirmed: show what happened, then return to the Billing Summary. */
   B.planChanged = () => {
     const c = B.lastPlanChange; if (!c) return;
-    const up = c.kind === 'up', row = (k, v) => `<div class="pc-row"><span>${k}</span><b>${v}</b></div>`;
-    const m = B.modal({ title: up ? 'Plan upgraded' : 'Downgrade scheduled', size: 'modal-sm',
+    const up = c.kind === 'up', sch = c.kind === 'sched', row = (k, v) => `<div class="pc-row"><span>${k}</span><b>${v}</b></div>`;
+    const m = B.modal({ title: up ? 'Plan upgraded' : sch ? 'Upgrade scheduled' : 'Downgrade scheduled', size: 'modal-sm',
       body: `<div class="pc-ok"><div class="pc-tick ${up ? '' : 'sched'}"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${up ? '<path d="M5 12.5l4.5 4.5L19 7.5"/>' : '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>'}</svg></div>
         <h3 class="pc-h">${up ? `You are now on ${esc(c.name)}` : `${esc(c.name)} starts ${B.fmtDate(c.effective)}`}</h3>
-        <p class="pc-p">${up ? 'Your new plan is active today and the next bill is updated.' : `You keep ${esc(S.plan.name)} until then. Nothing changes on your bill today.`}</p>
+        <p class="pc-p">${up ? 'Your new plan is active today and the next bill is updated.' : (sch ? `No charge today. You keep ${esc(S.plan.name)} until then, and the new allowances start with the new period.` : `You keep ${esc(S.plan.name)} until then. Nothing changes on your bill today.`)}</p>
         <div class="pc-rows">${row('Plan', esc(c.name))}${row('Price', `${$(c.rate)} per seat a month`)}${row('Billing cycle', esc(c.cycle))}${up ? row('Prorated charge', c.extra > 0 ? $(c.extra) : 'None') : ''}${row(up ? 'Next bill estimate' : 'Takes effect', up ? $(C.estimate()) : B.fmtDate(c.effective))}</div></div>`,
       footer: '<button type="button" class="btn btn-brand" data-bs-dismiss="modal">Back to Billing Summary</button>' });
     m.el.addEventListener('hidden.bs.modal', () => B.go('summary'));
@@ -52,47 +60,37 @@
 
   function draw() {
     if (!host || !host.isConnected) return;
-    const lp = lastPaid(), cancel = S.cancelAt;
-    const cur = S.plans.find(p => p.name === S.plan.name);
-    const ico = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l2.6 5.3 5.9.9-4.2 4.1 1 5.8L12 16.4 6.7 19.1l1-5.8L3.5 9.2l5.9-.9L12 3z"/></svg>';
-    host.innerHTML = `<div class="d-grid gap-3">
-      <section class="ao-card pl-hero" aria-label="Current plan">
-        <div class="pl-top">
-          <div class="pl-id"><div class="pl-ico">${ico}</div>
-            <div><div class="pl-kick">Your current plan</div>
-              <div class="ao-name pl-name">${esc(S.plan.name)} ${cancel ? B.badge('Cancels ' + B.fmtDate(cancel), 'bad') : B.badge('Active', 'ok')}</div>
-              <div class="pl-sub"><b>${$(S.plan.rate)}</b> per seat a month <span class="pl-dot"></span> billed ${esc(S.plan.cycle.toLowerCase())} <span class="pl-dot"></span> ${S.seats} seats${cur ? ` <span class="pl-dot"></span> ${esc(cur.inc.minutes)} calling` : ''}</div>
-              ${S.scheduledPlan ? `<div class="pl-note">${B.badge('Scheduled', 'warn')} Moves to <b>${esc(S.scheduledPlan.name)}</b> on ${B.fmtDate(S.scheduledPlan.effective)}. <button type="button" class="btn btn-link p-0 align-baseline" id="undoSched">Cancel change</button></div>` : ''}</div></div>
-          <div class="pl-actions">${cancel ? '<button type="button" class="btn btn-brand-o" id="keepSub">Keep subscription</button>' : ''}<button type="button" class="btn btn-brand" data-chg>Change plan</button><button type="button" class="btn btn-brand-o" id="dlInv">Download invoice</button></div></div>
-        <div class="p-3 pt-0"><div class="row g-3">
-          <div class="col-6 col-xl-3"><div class="tile accent"><div class="eyebrow">Last payment</div><div class="t-val">${lp ? $(lp.amount) : '—'}</div><div class="t-note">${lp ? 'Paid ' + B.fmtDate(lp.date) : 'No payment yet'}</div></div></div>
-          <div class="col-6 col-xl-3"><div class="tile"><div class="eyebrow">Next bill</div><div class="t-val">${$(C.estimate())}</div><div class="t-note">${S.seats} seats × ${$(S.plan.rate)}${C.addonsTotal() ? ` + ${$(C.addonsTotal())} add-ons` : ''}</div></div></div>
-          <div class="col-6 col-xl-3"><div class="tile"><div class="eyebrow">${cancel ? 'Ends on' : 'Renewing on'}</div><div class="t-val sm">${B.fmtDate(S.period.next)}</div><div class="t-note">Billed every month</div></div></div>
-          <div class="col-6 col-xl-3"><div class="tile"><div class="eyebrow">Seats</div><div class="t-val">${C.assigned()} of ${S.seats}</div><div class="t-note">Assigned of the seats you pay for</div></div></div>
-        </div></div></section>
+    const lp = lastPaid(), cancel = S.cancelAt, ago = lp ? Math.max(0, Math.round((Date.parse(S.today) - Date.parse(lp.date)) / 864e5)) : 0;
+    host.innerHTML = `<div class="d-grid gap-3" data-plain>
+      <div class="pl-bar2">
+        <div class="pl-line"><span><b>${esc(S.plan.name)}</b> \u00b7 ${$(S.plan.rate)}/user per ${esc(S.plan.cycle === 'Annual' ? 'month, billed yearly' : 'month')} \u00b7 ${cancel ? B.badge('Cancels ' + B.fmtDate(cancel), 'bad') : `<span class="pl-active">Active <svg class="pl-okic" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9.5" fill="currentColor" stroke="none"/><path d="M8 12.4l2.8 2.8L16 9.6" stroke="#fff"/></svg></span>`}</span>
+          ${S.scheduledPlan ? `<span class="pl-note">${B.badge('Scheduled', 'warn')} Moves to <b>${esc(S.scheduledPlan.name)}</b> on ${B.fmtDate(S.scheduledPlan.effective)}. <button type="button" class="btn btn-link p-0 align-baseline" id="undoSched">Cancel change</button></span>` : ''}</div>
+        <div class="pl-btns">${cancel ? '<button type="button" class="btn btn-brand-o" id="keepSub">Keep subscription</button>' : ''}<button type="button" class="btn btn-brand pl-b1" data-chg>${B.icon('refresh', 15)} Change plan</button><button type="button" class="btn btn-brand pl-b2" id="dlInv">${B.icon('download', 15)} Download invoice</button></div></div>
 
-      <div class="row g-3" data-tabgroup="overview">
-        <div class="col-12 col-xxl-7">${includes()}</div>
-        <div class="col-12 col-xxl-5"><section class="ao-card" aria-label="Seats and resources">
-          <div class="tabs" role="tablist" aria-label="Plan resources">${[['licence', 'Licence'], ['numbers', 'Numbers'], ['storage', 'Storage'], ['ai', 'AI']].map(t => `<button type="button" role="tab" class="tab ${panel === t[0] ? 'active' : ''}" aria-selected="${panel === t[0]}" data-panel="${t[0]}">${t[1]}</button>`).join('')}</div>
-          <div class="p-3" id="sidePanel" role="tabpanel"></div></section></div>
+      <div class="row g-3 pl-kpis">
+        <div class="col-6 col-xl-3"><div class="tile pl-t pl-g"><span class="pl-ti">${B.icon('wallet', 20)}</span><div class="pl-tb"><div class="eyebrow">Last charge</div><div class="t-val">${lp ? $(lp.amount) : '\u2014'}</div><div class="t-note">${lp ? `${B.fmtDate(lp.date)} \u00b7 ${ago} day${ago === 1 ? '' : 's'} ago` : 'No payment yet'}</div></div></div></div>
+        <div class="col-6 col-xl-3"><div class="tile pl-t pl-b"><span class="pl-ti">${B.icon('statement', 20)}</span><div class="pl-tb"><div class="eyebrow">Next bill</div><div class="t-val">${$(C.estimate())}</div><div class="t-note">${$(S.plan.rate)}/user \u00d7 ${S.seats} seats${C.addonsTotal() ? ` + ${$(C.addonsTotal())} add-ons` : ''}</div></div></div></div>
+        <div class="col-6 col-xl-3"><div class="tile pl-t pl-v"><span class="pl-ti">${B.icon('refresh', 20)}</span><div class="pl-tb"><div class="eyebrow">${cancel ? 'Ends on' : 'Renews on'}</div><div class="t-val">${B.fmtDate(S.period.next)}</div><div class="t-note">When the card on file is charged</div></div></div></div>
+        <div class="col-6 col-xl-3"><div class="tile pl-t pl-a"><span class="pl-ti">${B.icon('licences', 20)}</span><div class="pl-tb"><div class="eyebrow">Seats</div><div class="t-val">${C.assigned()} of ${S.seats} <i class="pl-dotg" aria-hidden="true"></i></div><div class="t-note">In use of seats on the bill</div></div></div></div>
       </div>
-      <div data-tabgroup="compare">${matrix()}</div>
-      <div data-tabgroup="ai">${allowances()}</div>
-      <div data-tabgroup="extras">${extras()}</div></div>`;
+
+      <div class="row g-3">
+        <div class="col-12 col-xl-6">${allowances()}</div>
+        <div class="col-12 col-xl-6">${includes()}</div>
+      </div>
+
+      <section class="ao-card" aria-label="Seats and resources">
+        <div class="tabs" role="tablist" aria-label="Plan resources">${[['licence', 'Licence'], ['numbers', 'DID(s)'], ['storage', 'Storage'], ['ai', 'AI']].map(t => `<button type="button" role="tab" class="tab ${panel === t[0] ? 'active' : ''}" aria-selected="${panel === t[0]}" data-panel="${t[0]}">${t[1]}</button>`).join('')}</div>
+        <div class="p-3" id="sidePanel" role="tabpanel"></div></section></div>`;
 
     host.querySelectorAll('[data-go]').forEach(b => b.onclick = () => B.go(b.dataset.go));
     host.querySelectorAll('[data-chg]').forEach(b => b.onclick = () => B.openChangePlan(() => { draw(); B.planChanged(); }));
     host.querySelector('#undoSched')?.addEventListener('click', () => { S.scheduledPlan = null; B.toast('Plan change cancelled.'); draw(); });
-    host.querySelectorAll('[data-pickplan]').forEach(b => b.onclick = () => B.openChangePlan(() => { draw(); B.planChanged(); }, b.dataset.pickplan));
-    host.querySelector('[data-feat]')?.addEventListener('click', () => { featAll = !featAll; draw(); });
     host.querySelectorAll('[data-rates]').forEach(b => b.onclick = () => openRates(b.dataset.rates));
     host.querySelector('#dlInv').onclick = () => { const r = lastPaid(); if (!r) return B.toast('There is no paid invoice to download yet.', 'error'); B.showReceipt(B.activityInvoice(r)); };
     host.querySelector('#keepSub')?.addEventListener('click', () => { S.cancelAt = null; B.toast('Subscription kept.'); draw(); });
     host.querySelectorAll('[data-panel]').forEach(b => b.onclick = () => { panel = b.dataset.panel; draw(); });
     side(host.querySelector('#sidePanel'));
-    const g = n => [host.querySelector(`[data-tabgroup="${n}"]`)];
-    B.sectionTabs({ anchor: g('overview')[0], groups: [g('overview'), g('compare'), g('ai'), g('extras')], labels: ['Overview', 'Compare plans', 'AI & rates', 'Extras'], key: 'plan' });
   }
 
   /* "Available Minutes / Fax / SMS-MMS": what the plan's free credit buys at each rate (rounded up, as in the reference) */
@@ -126,90 +124,107 @@
     const cur = S.plans.find(p => p.name === S.plan.name), i = cur && cur.inc;
     return `<section class="ao-card" aria-label="AI allowances"><div class="ao-head"><div><div class="ao-name">AI allowances</div><div class="ao-desc">What your plan includes for AI each period, and where to get more.</div></div></div>
       <div class="p-3 pt-0"><div class="row g-3 mb-3">
-        <div class="col-6"><div class="tile"><div class="eyebrow">AI minutes included</div><div class="t-val sm">${esc(i ? i.aiMin : 'Not included')}</div></div></div>
-        <div class="col-6"><div class="tile"><div class="eyebrow">AI replies included</div><div class="t-val sm">${esc(i ? i.aiReplies : 'Not included')}</div></div></div></div>
-        <div class="bsub p-3 mb-2 d-flex flex-wrap justify-content-between align-items-center gap-2"><strong class="small">Available Minutes</strong><button type="button" class="btn btn-brand-o" data-rates="minutes">Choose Available Minutes</button></div>
-        <div class="bsub p-3 mb-2 d-flex flex-wrap justify-content-between align-items-center gap-2"><strong class="small">Available Fax</strong><button type="button" class="btn btn-brand-o" data-rates="fax">Choose Available Fax</button></div>
-        <div class="bsub p-3 mb-2 d-flex flex-wrap justify-content-between align-items-center gap-2"><strong class="small">Available SMS/MMS</strong><button type="button" class="btn btn-brand-o" data-rates="sms">Choose Available SMS/MMS</button></div></div></section>`;
+        <div class="col-6"><div class="tile"><div class="eyebrow">AI call minutes included</div><div class="t-val sm">${esc(i ? i.aiMin : 'Not included')}</div></div></div>
+        <div class="col-6"><div class="tile"><div class="eyebrow">AI message replies included</div><div class="t-val sm">${esc(i ? i.aiReplies : 'Not included')}</div></div></div></div>
+        <div class="al-row"><strong>Available Minutes</strong><button type="button" class="btn btn-brand-o" data-rates="minutes">Check Available Minutes</button></div>
+        <div class="al-row"><strong>Available Fax</strong><button type="button" class="btn btn-brand-o" data-rates="fax">Check Available FAX</button></div>
+        <div class="al-row"><strong>Available SMS/MMS</strong><button type="button" class="btn btn-brand-o" data-rates="sms">Check Available SMS/MMS</button></div></div></section>`;
   }
 
   function includes() {
     const rows = [['voice', 'Calling'], ['sms', 'Text messages'], ['meetings', 'Meetings'], ['storage', 'Recording storage']];
     return `<section class="ao-card" aria-label="What your plan includes"><div class="ao-head"><div><div class="ao-name">What your plan includes</div><div class="ao-desc">Each allowance, how much of it you have used, and what is left.</div></div></div>
-      <div class="table-responsive"><table class="table btable align-middle"><caption class="visually-hidden">Plan allowances</caption><thead><tr>${['Allowance', 'Included', 'Used', 'Left'].map((h, n) => `<th scope="col" class="${n ? 'text-end' : ''}"><span class="th-static">${h}</span></th>`).join('')}</tr></thead>
+      <div class="table-responsive"><table class="table btable align-middle"><caption class="visually-hidden">Plan allowances</caption><thead><tr>${['Service', 'Allowance', 'Used', 'Left'].map((h, n) => `<th scope="col" class="${n ? 'text-end' : ''}"><span class="th-static">${h}</span></th>`).join('')}</tr></thead>
         <tbody>${rows.map(r => { const u = inc(r[0]); const left = Math.max(0, u.included - u.used); return `<tr><td class="fw-semibold">${r[1]}</td><td class="text-end">${B.num(u.included)} ${esc(u.unit)}</td><td class="text-end">${B.num(u.used)} ${esc(u.unit)}<div class="pl-bar" aria-hidden="true"><i style="width:${Math.min(100, Math.round(u.used / (u.included || 1) * 100))}%"></i></div></td><td class="text-end">${left ? B.num(left) + ' ' + esc(u.unit) : '<span class="text-danger">None left</span>'}</td></tr>`; }).join('')}</tbody></table></div></section>`;
-  }
-
-  function matrix() {
-    const P = plans(), rows = [['Calling', 'minutes'], ['Text messages', 'sms'], ['Numbers included', 'numbers'], ['Recording storage', 'storage'], ['AI minutes', 'aiMin'], ['AI replies', 'aiReplies']];
-    const isCur = p => p.name === S.plan.name, tick = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
-    const val = v => /^(none|—|-)$/i.test(String(v).trim()) ? `<span class="pl-none">${esc(v)}</span>` : /unlimited/i.test(v) ? `<b class="pl-yes">${esc(v)}</b>` : `<b>${esc(v)}</b>`;
-    const shown = p => featAll ? p.features : p.features.slice(0, 4), more = Math.max(...P.map(p => p.features.length)) > 4;
-    const cols = `--pl-n:${P.length}`;
-    const card = p => {
-      const diff = Math.round((p.monthly - S.plan.rate) * 100) / 100, kind = isCur(p) ? 'cur' : diff > 0 ? 'up' : diff < 0 ? 'down' : 'same';
-      return `<div class="pl-hc" role="columnheader"><div class="pl-card ${kind === 'cur' ? 'is-cur' : ''}">
-        <div class="pl-tag">${kind === 'cur' ? B.badge('Your plan', 'ok') : kind === 'up' ? B.badge('Upgrade', 'info') : kind === 'down' ? B.badge('Downgrade', 'warn') : B.badge('Same price', 'muted')}</div>
-        <div class="pl-pn">${esc(p.name)}</div>
-        <div class="pl-price">${$(p.monthly)}<span>per ${esc(p.unit)} / mo</span></div>
-        <div class="pl-delta">${kind === 'cur' ? 'What you pay today' : diff === 0 ? 'No price change' : `${diff > 0 ? '+' : '−'}${$(Math.abs(diff))} vs your plan`}</div>
-        <button type="button" class="btn ${kind === 'up' ? 'btn-brand' : 'btn-brand-o'}" ${kind === 'cur' ? 'disabled' : `data-pickplan="${esc(p.id)}"`}>${kind === 'cur' ? 'Current plan' : 'Select plan'}</button></div></div>`;
-    };
-    const cell = (p, inner, cls = '') => `<div class="pl-c ${isCur(p) ? 'is-cur' : ''} ${cls}" role="cell">${inner}</div>`;
-    return `<section class="ao-card pl-cmp" aria-label="What each plan includes"><div class="ao-head"><div><div class="ao-name">What each plan includes</div><div class="ao-desc">Business phone plans side by side. Your plan is highlighted, and each price shows how it compares with yours.</div></div></div>
-      <div class="pl-scroll" tabindex="0" role="region" aria-label="Plan comparison. Scroll sideways on small screens.">
-        <div class="pl-grid" role="table" aria-label="Plan comparison" style="${cols}">
-          <div class="pl-row pl-heads" role="row"><div class="pl-corner" role="columnheader"><div class="pl-ck">Compare plans</div><div class="pl-cs">Prices are per seat, per month. Allowances reset every billing period.</div></div>${P.map(card).join('')}</div>
-          <div class="pl-grp" role="row"><span role="columnheader">Allowances</span><em>per seat each month</em></div>
-          ${rows.map(r => `<div class="pl-row" role="row"><div class="pl-rl" role="rowheader">${r[0]}</div>${P.map(p => cell(p, val(p.inc[r[1]]))).join('')}</div>`).join('')}
-          <div class="pl-grp" role="row"><span role="columnheader">Highlights</span></div>
-          <div class="pl-row pl-feat" role="row"><div class="pl-rl" role="rowheader">What's included</div>${P.map(p => cell(p, `<ul>${shown(p).map(f => `<li><i>${tick}</i><span>${esc(f)}</span></li>`).join('')}</ul>`)).join('')}</div>
-        </div></div>
-      ${more ? `<div class="pl-more"><button type="button" class="btn btn-brand-o btn-sm" data-feat aria-expanded="${featAll}">${featAll ? 'Show fewer features' : 'Show all features'}</button></div>` : ''}
-      <div class="px-3 py-2 small" style="background:var(--info-bg);color:var(--info)">Allowances are per seat each month. Anything beyond them is billed at the rates on the Usage page.</div></section>`;
-  }
-
-  function extras() {
-    const items = S.addons.filter(a => a.status !== 'Coming soon').slice(0, 8);
-    return `<section class="ao-card" aria-label="Add extras to a plan"><div class="ao-head"><div><div class="ao-name">Add extras to a plan ${B.badge('Optional', 'warn')}</div><div class="ao-desc">Extras you can add at any time. They are billed with the plan.</div></div><button type="button" class="btn btn-brand-o" data-go="add-ons">All add-ons</button></div>
-      <div class="table-responsive"><table class="table btable align-middle"><caption class="visually-hidden">Add-ons</caption><thead><tr><th scope="col"><span class="th-static">Add-on</span></th><th scope="col" class="text-end"><span class="th-static">Price</span></th><th scope="col" class="d-none d-md-table-cell"><span class="th-static">Charged</span></th></tr></thead>
-        <tbody>${items.map(a => `<tr><td><div class="fw-semibold">${esc(a.name)}</div><div class="text-muted small">${esc(a.description)}</div></td><td class="text-end fw-bold">${$(a.price)}</td><td class="d-none d-md-table-cell text-muted small">${esc(a.unit)}, ${esc(a.freq.toLowerCase())}</td></tr>`).join('')}</tbody></table></div></section>`;
   }
 
   /* ---- right-hand tabs ---- */
   function side(p) {
     if (panel === 'licence') {
       const inUse = C.assigned(), unassigned = Math.max(0, S.seats - inUse - C.pending());
-      p.innerHTML = `<div class="bsub mb-3">${[['Seats in use', inUse], ['Paid but unassigned', unassigned], ['Scheduled for removal', 0], ['Total seats on plan', S.seats], ['Seats you pay for next', `${S.seats} (${$(S.seats * S.plan.rate)}/month)`]].map(r => `<div class="ao-row" style="padding:8px 14px"><span class="small">${r[0]}</span><strong>${r[1]}</strong></div>`).join('').replace('border-top', 'border-top')}</div>
-        <p class="small text-muted">Seats you remove stop being billed from the next period. Seats you add are charged in proportion for the rest of this one.</p>
-        <div class="d-flex flex-wrap justify-content-end gap-2 mb-3"><button type="button" class="btn btn-brand-o" id="rmSeats">Remove seats</button><button type="button" class="btn btn-brand-o" id="buySeats">Buy seats</button></div>
+      p.innerHTML = `<p class="seat-sum">Seats in use <b>${inUse}</b> \u00b7 Paid but unassigned <b>${unassigned}</b> \u00b7 Scheduled for removal <b>0</b> \u00b7 Seats you pay for next <b>${S.seats}</b> (${$(S.seats * S.plan.rate)}/month). Seats you remove stop being billed from the next period; seats you add are charged in proportion for the rest of this one.</p>
         <div id="seatTable"></div>`;
+      const ccs = () => S.costCentres.filter(c => c.status === 'Active');
+      const ccOpts = v => `<option value="">Unallocated</option>${ccs().map(c => `<option value="${esc(c.code)}" ${v === c.code ? 'selected' : ''}>${esc(c.code)} \u00b7 ${esc(c.name)}</option>`).join('')}`;
+      const initials = n => n.split(/\s+/).map(x => x[0]).slice(0, 2).join('').toUpperCase();
+      const ext = r => 'x' + (1000 + r.id * 7);
+      p.querySelector('#seatTable').insertAdjacentHTML('beforebegin', `<div class="seat-bulk" id="seatBulk"><div class="seat-hint">Tick seats to give them all the same cost centre, or pick one for each person below.</div>
+        <div class="seat-tools"><label class="form-check mb-0"><input class="form-check-input" type="checkbox" id="selAll"><span class="form-check-label small">Select all</span></label>
+          <select id="bulkCc" class="form-select form-select-sm w-auto" aria-label="Cost centre for the ticked seats">${ccOpts('')}</select><button type="button" class="btn btn-brand btn-sm" id="bulkApply" disabled>Apply to selected</button></div></div>`);
+      const bulk = p.querySelector('#seatBulk'), upd = () => { const n = [...sel].filter(id => S.licences.some(l => l.id === id)).length; p.querySelector('#bulkApply').disabled = !n; p.querySelector('#bulkApply').textContent = n ? `Apply to ${n} selected` : 'Apply to selected'; p.querySelector('#selAll').checked = n && n === S.licences.length; p.querySelector('#selAll').indeterminate = n > 0 && n < S.licences.length; };
+      const dt = B.DataTable(p.querySelector('#seatTable'), {
+        caption: 'Seat allocation', toolbar: false, search: false, compactPager: true, pageSize: 25, rows: () => S.licences, idKey: 'id', emptyText: 'No licences assigned yet.',
+        columns: [
+          { key: '_sel', label: '', sortable: false, render: r => `<input class="form-check-input" type="checkbox" data-sel="${r.id}" ${sel.has(r.id) ? 'checked' : ''} aria-label="Select ${esc(r.user)}">` },
+          { key: 'user', label: 'User name', render: r => `<div class="seat-who"><span class="seat-av" aria-hidden="true">${esc(initials(r.user))}</span><div><div class="fw-semibold">${esc(r.user)}</div><div class="text-muted small">${esc((r.tier || '').replace(' Seat', '').toLowerCase())}</div></div></div>` },
+          { key: 'email', label: 'Email', hide: 'md', render: r => `<span class="seat-mail">${esc(r.email)}</span>` },
+          { key: 'ext', label: 'User ID', hide: 'sm', sortable: false, render: r => `<span class="mono seat-id"><svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4 4h4v4H4zM10 4h4v4h-4zM16 4h4v4h-4zM4 10h4v4H4zM10 10h4v4h-4zM16 10h4v4h-4zM4 16h4v4H4zM10 16h4v4h-4zM16 16h4v4h-4z"/></svg>${ext(r).slice(1)}</span>` },
+          { key: 'role', label: 'Badges', hide: 'lg', sortable: false, render: r => `<span class="seat-role ${r.id === S.licences[0].id ? 'admin' : ''}">${r.id === S.licences[0].id ? 'ADMIN' : 'AGENT'}</span>` },
+          { key: 'cc', label: 'Cost Center', sortable: false, render: r => `<select class="form-select form-select-sm seat-cc" data-cc="${r.id}" aria-label="Cost centre for ${esc(r.user)}">${ccOpts(r.cc || '')}</select>${r.cc ? '' : '<div class="cc-note">Unallocated \u2014 not charged to a cost centre.</div>'}` },
+          { key: '_act', label: 'Actions', align: 'end' }
+        ],
+        actions: r => `<div class="dropdown"><button type="button" class="btn btn-brand-o btn-sm dropdown-toggle" data-bs-toggle="dropdown" data-bs-popper-config='{"strategy":"fixed"}' aria-expanded="false">Actions</button><ul class="dropdown-menu dropdown-menu-end"><li><button type="button" class="dropdown-item" data-act="clear" data-id="${r.id}" ${r.cc ? '' : 'disabled'}><span>Clear cost centre</span></button></li><li><button type="button" class="dropdown-item text-danger" data-act="revoke" data-id="${r.id}"><span>Revoke seat</span></button></li></ul></div>`,
+        onAction: (a, r) => {
+          const l = S.licences.find(x => x.id === r.id); if (!l) return;
+          if (a === 'clear') { l.cc = ''; B.toast(`${l.user} is unallocated.`, 'info', 'Cost centre cleared'); dt.refresh(); }
+          else B.confirm({ title: 'Revoke licence?', danger: true, okLabel: 'Revoke', message: `${l.user} will lose access and the licence becomes available to assign again.`,
+            onOk: () => { S.licences = S.licences.filter(x => x.id !== l.id); sel.delete(l.id); B.toast('Licence revoked.'); draw(); } });
+        }
+      });
+      p.querySelector('.dt-pager').insertAdjacentHTML('beforeend', '<div class="seat-actions"><button type="button" class="btn btn-brand" id="rmSeats">Remove seats</button><button type="button" class="btn btn-brand" id="buySeats">Buy seats</button></div>');
       p.querySelector('#rmSeats').onclick = () => B.manageSeats(draw);
       p.querySelector('#buySeats').onclick = () => B.buySeats(draw);
-      B.DataTable(p.querySelector('#seatTable'), {
-        caption: 'Licences', toolbar: false, search: false, compactPager: true, pageSize: 25, rows: () => S.licences, idKey: 'id', emptyText: 'No licences assigned yet.',
+      const box = p.querySelector('#seatTable');
+      box.addEventListener('change', e => {
+        const c = e.target.closest('[data-sel]'), k = e.target.closest('[data-cc]');
+        if (c) { c.checked ? sel.add(+c.dataset.sel) : sel.delete(+c.dataset.sel); upd(); }
+        else if (k) { const l = S.licences.find(x => x.id === +k.dataset.cc); if (l && (l.cc || '') !== e.target.value) { l.cc = e.target.value; B.toast(e.target.value ? `${l.user} is now charged to ${e.target.value}.` : `${l.user} is unallocated.`, 'ok', 'Cost centre updated'); dt.refresh(); } }
+      });
+      bulk.querySelector('#selAll').onchange = e => { e.target.checked ? S.licences.forEach(l => sel.add(l.id)) : sel.clear(); dt.refresh(); upd(); };
+      bulk.querySelector('#bulkApply').onclick = () => {
+        const cc = bulk.querySelector('#bulkCc').value, ids = [...sel].filter(id => S.licences.some(l => l.id === id));
+        if (!ids.length) return B.toast('Tick at least one seat first.', 'error', 'No seats selected');
+        S.licences.forEach(l => { if (ids.includes(l.id)) l.cc = cc; });
+        B.toast(cc ? `${ids.length} seat${ids.length === 1 ? '' : 's'} charged to ${cc}.` : `${ids.length} seat${ids.length === 1 ? '' : 's'} unallocated.`, 'ok', 'Cost centre updated'); sel.clear(); dt.refresh(); upd();
+      };
+      upd();
+    } else if (panel === 'numbers') {
+      p.innerHTML = '<div id="didTable"></div>';
+      B.DataTable(p.querySelector('#didTable'), {
+        caption: 'DID numbers', toolbar: false, search: false, compactPager: true, pageSize: 25, idKey: 'id', rows: () => S.dids, emptyText: 'No phone numbers on this account yet.',
         columns: [
-          { key: 'user', label: 'Name', render: r => `<div class="fw-semibold">${esc(r.user)}</div><div class="text-muted small">${esc(r.email)}</div>` },
-          { key: 'tier', label: 'Licence', hide: 'sm' },
-          { key: 'status', label: 'Status', render: r => B.badge(r.status, B.statusKind(r.status)) }
+          { key: 'number', label: 'DID Number', render: r => `<span class="did-n"><span class="did-flag" title="${esc(r.country)}">${esc(r.flag)}</span>${esc(r.number)}</span>` },
+          { key: 'from', label: 'Duration', render: r => `<span class="text-nowrap">${esc(r.from)} - ${esc(r.to)}</span>` },
+          { key: 'cost', label: 'DID Cost ($)', render: r => `<span class="did-cost">${r.cost.toFixed(2)}</span>${r.cost === 0 ? '<span class="did-free">FREE</span>' : ''}` }
         ]
       });
-    } else if (panel === 'numbers') {
-      const r = S.resources[0];
-      p.innerHTML = `<div class="d-flex justify-content-between mb-1"><strong>Phone numbers</strong><span class="text-muted small">${r.used} of ${r.limit} used</span></div>
-        <div class="progress mb-3" role="progressbar" aria-label="Phone numbers used" aria-valuenow="${B.pct(r.used, r.limit)}" aria-valuemin="0" aria-valuemax="100"><div class="progress-bar" style="width:${B.pct(r.used, r.limit)}%"></div></div>
-        <ul class="list-unstyled small mb-3">${['+1 (555) 010-2041', '+1 (555) 010-2042'].map(n => `<li class="d-flex justify-content-between border-bottom py-2"><span class="mono">${n}</span><span class="text-muted">Direct dial</span></li>`).join('')}</ul>
-        <button type="button" class="btn btn-brand-o" data-go="add-ons">Add numbers</button>`;
     } else if (panel === 'storage') {
-      const r = S.resources[3], pct = B.pct(r.used, r.limit);
-      p.innerHTML = `<div class="d-flex justify-content-between mb-1"><strong>Recording storage</strong><span class="text-muted small">${r.used} of ${r.limit} GB used</span></div>
-        <div class="progress mb-2" role="progressbar" aria-label="Storage used" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><div class="progress-bar ${pct >= 85 ? 'near' : ''}" style="width:${pct}%"></div></div>
-        <p class="small text-muted">${r.limit - r.used} GB left${pct >= 85 ? ' · near the limit' : ''}. Extra storage is sold in 50 GB blocks.</p><button type="button" class="btn btn-brand-o" data-go="add-ons">Add storage</button>`;
+      const sto = S.resources.find(r => r.label === 'Storage') || { used: 0, limit: 0, unit: 'GB' }, extra = S.addons.find(a => a.name === 'Additional Storage');
+      p.innerHTML = '<div id="stoTable"></div>';
+      B.DataTable(p.querySelector('#stoTable'), {
+        caption: 'Storage', toolbar: false, search: false, compactPager: true, pageSize: 25, idKey: 'id',
+        rows: () => [{ id: 1, name: 'Recording storage', note: 'Included with the plan', used: sto.used, limit: sto.limit, cost: 0 }].concat(extra && extra.status === 'Active' && extra.qty ? [{ id: 2, name: 'Additional Storage', note: `${extra.qty} \u00d7 50 GB blocks`, used: 0, limit: extra.qty * 50, cost: extra.qty * extra.price }] : []),
+        columns: [
+          { key: 'name', label: 'Storage', render: r => `<div class="fw-semibold">${esc(r.name)}</div><div class="text-muted small">${esc(r.note)}</div>` },
+          { key: 'used', label: 'Used', render: r => `${B.num(r.used)} ${esc(sto.unit)}` },
+          { key: 'limit', label: 'Available', render: r => `${B.num(r.limit)} ${esc(sto.unit)}` },
+          { key: 'bar', label: 'Usage', sortable: false, hide: 'sm', render: r => { const pc = r.limit ? Math.min(100, Math.round(r.used / r.limit * 100)) : 0; return `<div class="did-bar" role="progressbar" aria-label="${esc(r.name)} used" aria-valuenow="${pc}" aria-valuemin="0" aria-valuemax="100"><i class="${pc >= 85 ? 'near' : ''}" style="width:${pc}%"></i></div><small class="text-muted">${pc}%</small>`; } },
+          { key: 'cost', label: 'Cost ($)', render: r => `<span class="did-cost">${r.cost.toFixed(2)}</span>${r.cost === 0 ? '<span class="did-free">INCLUDED</span>' : ''}` }
+        ]
+      });
     } else {
-      const u = inc('ai'), pct = B.pct(u.used, u.included);
-      p.innerHTML = `<div class="d-flex justify-content-between mb-1"><strong>AI usage</strong><span class="text-muted small">${B.num(u.used)} of ${B.num(u.included)} tokens</span></div>
-        <div class="progress mb-2" role="progressbar" aria-label="AI usage" aria-valuenow="${Math.min(pct, 100)}" aria-valuemin="0" aria-valuemax="100"><div class="progress-bar ${pct > 100 ? 'over' : ''}" style="width:${Math.min(pct, 100)}%"></div></div>
-        <p class="small ${pct > 100 ? 'text-danger' : 'text-muted'}">${pct > 100 ? `Over the allowance by ${B.num(u.used - u.included)} tokens, ${$((u.used - u.included) * u.rate)} charged.` : 'Within the allowance.'}</p><button type="button" class="btn btn-brand-o" data-go="usage">See usage</button>`;
+      p.innerHTML = '<div id="aiTable"></div>';
+      B.DataTable(p.querySelector('#aiTable'), {
+        caption: 'AI agent usage', toolbar: false, search: false, compactPager: true, pageSize: 25, idKey: 'id', rows: () => S.aiAgents,
+        emptyHtml: '<svg class="empty-art" width="150" height="110" viewBox="0 0 150 110" aria-hidden="true"><rect x="12" y="14" width="64" height="80" rx="6" transform="rotate(-6 44 54)" fill="#fff" stroke="#c9d0de" stroke-width="2"/><rect x="70" y="10" width="66" height="84" rx="6" transform="rotate(5 103 52)" fill="#fff" stroke="#c9d0de" stroke-width="2"/><path d="M26 34h34M26 44h34M26 54h22M84 30h38M84 40h38M84 50h26" stroke="#d4dae6" stroke-width="3" stroke-linecap="round"/><circle cx="78" cy="72" r="14" fill="#fff" stroke="#8a94ab" stroke-width="3"/><path d="M88 82l14 14" stroke="#8a94ab" stroke-width="4" stroke-linecap="round"/></svg><strong class="did-none">No Agent Usage Found!</strong>',
+        columns: [
+          { key: 'name', label: 'Agent Name' },
+          { key: 'type', label: 'Type' },
+          { key: 'total', label: 'Total USD', render: r => $(r.total) },
+          { key: 'minutes', label: 'Used Minutes', render: r => B.num(r.minutes) },
+          { key: 'messages', label: 'Used Messages', render: r => B.num(r.messages) }
+        ]
+      });
     }
     p.querySelectorAll('[data-go]').forEach(b => b.onclick = () => B.go(b.dataset.go));
   }

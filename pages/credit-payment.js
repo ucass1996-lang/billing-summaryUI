@@ -35,20 +35,28 @@
   const BRANDS = '<div class="brand-row"><img src="assets/card-brands.png" width="187" height="33" alt="Accepted cards: Visa, Mastercard, Discover and American Express"></div>';
 
   /* Add (no method) or edit (existing method) a card. Only the last 4 digits are kept. */
+  /* brand tiles and the small icons used in the Add Card popup (inline SVG, nothing external) */
+  const TILES = '<div class="ac-brands" aria-label="Accepted cards: Visa, Mastercard, Discover and American Express"><span class="ac-tile ac-visa">VISA</span><span class="ac-tile"><i class="mc1"></i><i class="mc2"></i></span><span class="ac-tile ac-disc">DISCOVER<b></b></span><span class="ac-tile ac-amex">AMERICAN<br>EXPRESS</span></div>';
+  const ic = d => `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+  const IC_USER = ic('<circle cx="12" cy="8" r="3.6"/><path d="M4.5 20c.6-3.6 3.7-5.6 7.5-5.6s6.9 2 7.5 5.6"/>'), IC_CAL = ic('<rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/>'),
+    IC_CVV = '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 2.8v5.4c0 4.4-2.9 7.9-7 9.8-4.1-1.9-7-5.4-7-9.8V5.8z"/><text x="12" y="14" text-anchor="middle" font-size="5.6" font-weight="700" fill="currentColor" stroke="none">CVV</text></svg>';
+  const logoFor = b => ({ Visa: '<span class="ac-tile sm ac-visa">VISA</span>', Mastercard: '<span class="ac-tile sm"><i class="mc1"></i><i class="mc2"></i></span>', Amex: '<span class="ac-tile sm ac-amex">AMEX</span>' }[b] || '<span class="ac-tile sm ac-none"><i class="mc1 off"></i><i class="mc2 off"></i></span>');
+
   B.openCardForm = (done, method) => {
     const edit = !!method, fid = 'cm' + Date.now();
     const fields = [
-      { name: 'holder', label: 'Card Holder Name', required: true, minLength: 2, maxLength: 60, col: 'col-12 col-sm-6', placeholder: 'Name', autocomplete: 'cc-name' },
-      edit ? { name: 'number', label: 'Card Number', readonly: true, col: 'col-12 col-sm-6', icon: B.icon('card', 18) }
-           : { name: 'number', label: 'Card Number', required: true, col: 'col-12 col-sm-6', placeholder: '**** **** **** ****', autocomplete: 'cc-number', icon: B.icon('card', 18), validate: numberCheck },
-      { name: 'exp', label: 'Expiration Date', required: true, col: 'col-12 col-sm-6', placeholder: 'MM / YY', autocomplete: 'cc-exp', validate: expiryCheck }
+      { name: 'holder', label: 'Card Holder Name', required: true, minLength: 2, maxLength: 60, col: 'col-12 col-md-6', placeholder: 'e.g., John Smith', autocomplete: 'cc-name', iconRight: IC_USER },
+      edit ? { name: 'number', label: 'Card Number', readonly: true, col: 'col-12 col-md-6', icon: B.icon('card', 20), iconRight: logoFor(method.brand) }
+           : { name: 'number', label: 'Card Number', required: true, col: 'col-12 col-md-6', placeholder: '\u2022\u2022\u2022\u2022  \u2022\u2022\u2022\u2022  \u2022\u2022\u2022\u2022  \u2022\u2022\u2022\u2022', autocomplete: 'cc-number', icon: B.icon('card', 20), iconRight: logoFor(''), validate: numberCheck },
+      { name: 'exp', label: 'Expiration Date', required: true, col: 'col-12 col-md-6', placeholder: 'MM / YY', autocomplete: 'cc-exp', validate: expiryCheck, iconRight: IC_CAL }
     ];
-    if (!edit) fields.push({ name: 'cvc', label: 'CVC', required: true, col: 'col-12 col-sm-6', placeholder: 'CVC', pattern: /^\d{3,4}$/, patternMsg: 'Security code must be 3 or 4 digits.', autocomplete: 'cc-csc' });
-    const values = edit ? { holder: method.holder, number: `${method.brand} •••• ${method.last4}`, exp: method.exp } : {};
+    if (!edit) fields.push({ name: 'cvc', label: 'CVC', required: true, col: 'col-12 col-md-6', placeholder: '123', pattern: /^\d{3,4}$/, patternMsg: 'Security code must be 3 or 4 digits.', autocomplete: 'cc-csc', iconRight: IC_CVV });
+    const values = edit ? { holder: method.holder, number: `${method.brand} \u2022\u2022\u2022\u2022 ${method.last4}`, exp: method.exp } : {};
+    const lock = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9.5" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/></svg>';
     const m = B.modal({
-      title: edit ? 'Edit Card' : 'Add Card', size: 'modal-md',
-      body: `${BRANDS}<form id="${fid}" novalidate><div class="row g-3">${fields.map(f => B.fieldHtml(f, values[f.name], fid)).join('')}</div><div class="alert alert-danger d-none mt-3 mb-0" data-formerr role="alert"></div></form>`,
-      footer: `<button type="submit" form="${fid}" class="btn btn-brand px-4" ${edit ? '' : 'disabled'}>${edit ? 'Save changes' : 'Add Card'}</button>`
+      title: edit ? 'Edit Card' : 'Add Card', size: 'modal-lg ac-modal',
+      body: `${TILES}<form id="${fid}" novalidate><div class="row g-4">${fields.map(f => B.fieldHtml(f, values[f.name], fid)).join('')}</div><div class="alert alert-danger d-none mt-3 mb-0" data-formerr role="alert"></div></form>`,
+      footer: `<div class="ac-foot"><button type="submit" form="${fid}" class="btn btn-brand ac-submit" ${edit ? '' : 'disabled'}>${edit ? 'Save changes' : 'Add Card'}</button><div class="ac-secure">${lock} Secured with 256-bit encryption</div></div>`
     });
     const form = m.el.querySelector('form'), btn = m.el.querySelector('[type=submit]');
     const allValid = () => fields.every(f => !B.validateField(f, String(form.elements[f.name].value || '').trim(), {}));
@@ -57,6 +65,14 @@
       else { if (!saveCard(v)) return { number: 'This card is already saved.' }; B.toast('Card added.'); }
       m.hide(); if (done) done();
     });
+    if (!edit) {
+      const num = form.elements.number, logo = m.el.querySelector(`#${fid}_number_ir`), exp = form.elements.exp;
+      num.addEventListener('input', () => {
+        const d = num.value.replace(/\D/g, '').slice(0, 19); num.value = d.replace(/(.{4})/g, '$1 ').trim();
+        logo.innerHTML = logoFor(d ? brand(d) : '');
+      });
+      exp.addEventListener('input', () => { const d = exp.value.replace(/\D/g, '').slice(0, 4); exp.value = d.length > 2 ? d.slice(0, 2) + ' / ' + d.slice(2) : d; });
+    }
     form.addEventListener('input', () => { btn.disabled = !allValid(); });
     m.el.addEventListener('shown.bs.modal', () => form.elements.holder.focus());
   };
@@ -70,7 +86,8 @@
 
   function draw() {
     if (!host || !host.isConnected) return;
-    host.innerHTML = `<div class="bcard overflow-hidden"><div class="tabs" role="tablist" aria-label="Credit and payment">
+    host.setAttribute('data-plain', '');
+    host.innerHTML = `<div class="bcard overflow-hidden cp-wrap"><div class="tabs" role="tablist" aria-label="Credit and payment">
       <button type="button" role="tab" class="tab ${tab === 'credit' ? 'active' : ''}" aria-selected="${tab === 'credit'}" data-tab="credit">Add Credit</button>
       <button type="button" role="tab" class="tab ${tab === 'methods' ? 'active' : ''}" aria-selected="${tab === 'methods'}" data-tab="methods">Payment Methods</button>
       <button type="button" role="tab" class="tab ${tab === 'auto' ? 'active' : ''}" aria-selected="${tab === 'auto'}" data-tab="auto">Auto Recharge${S.autoRecharge.on ? ' <span class="tab-dot" aria-hidden="true"></span>' : ''}</button>
@@ -183,12 +200,16 @@
     }
   }
 
-  function topUp(amount, via) {
+  /* adds credit to the balance and records it in the ledger and activity (also used by the quick "Add credits" popup on Usage) */
+  B.addCredit = (amount, via) => {
     S.credit = r2(S.credit + amount);
     const ref = 'TU-' + String(Date.now()).slice(-6);
     S.ledger.push({ id: S.ledger.length + 1, date: S.today, description: 'Credit top-up', ref, debit: 0, credit: amount, type: 'credit' });
     S.activity.unshift({ id: Math.max(0, ...S.activity.map(a => a.id)) + 1, date: S.today, amount, status: 'Paid', description: 'Fund top-up', ref: String(Date.now()).slice(-12) });
     B.toast(`${B.money(amount)} added using ${via}.`);
+  };
+  function topUp(amount, via) {
+    B.addCredit(amount, via);
     amt = 20; custom = ''; draw();
   }
 
@@ -214,9 +235,7 @@
     const has = S.methods.length > 0;
     p.innerHTML = `<div class="d-grid gap-3 pm-wrap">
       <section class="bsub p-3" aria-label="About cards"><div class="info-lines"><div>${B.icon('idcard', 16)}<span>Your primary card will be used for auto purchases.</span></div><div>${B.icon('refreshcw', 16)}<span>You can update or remove cards anytime.</span></div></div></section>
-      <div id="pmTable"></div>
-      <section class="bsub p-3" aria-labelledby="bi"><h2 class="sub-title mb-3" id="bi">Billing information</h2>
-        <form id="biForm" novalidate><div class="row g-3" id="biFields"></div><div class="mt-3"><button type="submit" class="btn btn-brand">Save billing information</button></div></form></section></div>`;
+      <div id="pmTable"></div></div>`;
 
     B.DataTable(p.querySelector('#pmTable'), {
       caption: 'Payment methods', toolbar: false, search: false, compactPager: true, pageSize: 25, idKey: 'id',
@@ -238,17 +257,6 @@
           onOk: () => { S.methods = S.methods.filter(x => x.id !== m.id); if (m.primary && S.methods.length) S.methods[0].primary = true; if (!S.methods.length) { S.autoRecharge.on = false; S.autoRecharge.state = 'ok'; } B.toast('Card removed.'); draw(); } });
       }
     });
-
-    const fields = [
-      { name: 'company', label: 'Company name', required: true, minLength: 2, maxLength: 80 },
-      { name: 'email', label: 'Billing email', type: 'email', required: true },
-      { name: 'phone', label: 'Phone', type: 'tel', help: 'Optional. Include the country code.' },
-      { name: 'country', label: 'Country', type: 'select', options: ['United States', 'United Kingdom', 'India', 'Canada', 'Australia', 'Germany'] },
-      { name: 'address', label: 'Billing address', type: 'textarea', required: true, maxLength: 200, col: 'col-12' },
-      { name: 'taxId', label: 'Tax ID', maxLength: 30, help: 'Optional.' }
-    ];
-    p.querySelector('#biFields').innerHTML = fields.map(f => B.fieldHtml(f, S.billingInfo[f.name], 'bi')).join('');
-    B.bindForm(p.querySelector('#biForm'), fields, v => { Object.assign(S.billingInfo, v); B.toast('Billing information saved.'); });
 
     p.querySelector('[data-retry]')?.addEventListener('click', () => {
       if (!has) return B.openCardForm(draw);

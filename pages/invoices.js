@@ -127,37 +127,96 @@
   B.activityInvoice = r => ({ id: r.ref, date: r.date, amount: r.amount, status: r.status, period: '',
     lines: [{ ref: r.ref, name: r.description, sub: B.fmtDate(r.date), qty: `1 × ${B.money(r.amount)}`, amount: r.amount }] });
 
+  /* compact summary on top of the invoice popup */
+  const summary = i => `<div class="inv-sum" role="group" aria-label="Invoice summary">
+    <div class="inv-sum-i"><span>Invoice</span><b class="mono">${esc(i.id)}</b></div>
+    <div class="inv-sum-i"><span>Billing date</span><b>${B.fmtDate(i.date)}</b></div>
+    <div class="inv-sum-i"><span>Due date</span><b>${B.fmtDate(B.dueDate ? B.dueDate(i.date) : i.date)}</b></div>
+    <div class="inv-sum-i"><span>Status</span><b>${B.badge(i.status, B.statusKind(i.status))}</b></div>
+    <div class="inv-sum-i tot"><span>Total</span><b>${B.money(total(i))}</b></div></div>`;
+
   B.showInvoice = i => {
-    const m = B.modal({ title: `Invoice ${i.id}`, size: 'modal-xl', body: doc(i), bare: true });
+    const m = B.modal({ title: `Invoice ${i.id}`, size: 'modal-xl inv-modal', body: `${summary(i)}${doc(i)}`, bare: true });
     m.el.querySelector('.modal-content').insertAdjacentHTML('afterbegin', `<button type="button" class="btn-ico modal-bare-dl" data-dl title="Download invoice" aria-label="Download invoice">${B.icon('download', 15)}</button>`);
     m.el.querySelector('[data-dl]').onclick = () => download(i);
   };
 
+  /* ---- the Invoices page: one searchable ledger, with add-on purchases on their own tab ---- */
+  const isAddon = d => /did purchase|add-on|addon|usage charges|number/i.test(d);
+  const ledger = () => S.activity.map(a => ({ id: 'a' + a.id, kind: 'act', date: a.date, number: a.ref, amount: a.amount, description: a.description, payment: 'Credit Card', status: a.status, src: a }))
+    .concat(S.invoices.filter(i => i.status !== 'Draft').map(i => ({ id: i.id, kind: 'inv', date: i.date, number: i.id, amount: i.amount, description: `Invoice for ${i.period || 'the billing period'}`, payment: 'Credit Card', status: i.status, src: i })))
+    .sort((x, y) => y.date.localeCompare(x.date) || String(y.number).localeCompare(String(x.number)));
+  let invTab = 'invoices', invDt, invFit;
+  const PERIODS = [['', 'All time'], ['30', 'Last 30 days'], ['month', 'This month'], ['90', 'Last 3 months'], ['year', 'This year']];
+  const sinceOf = v => { const t = new Date(S.today + 'T00:00:00'); if (v === '30') t.setDate(t.getDate() - 29); else if (v === '90') t.setDate(t.getDate() - 89); else if (v === 'month') t.setDate(1); else if (v === 'year') { t.setMonth(0); t.setDate(1); } else return ''; return t.toISOString().slice(0, 10); };
+
   B.pages.invoices = {
     title: 'Invoices',
-    desc: 'Search, view and download your invoices.',
+    desc: 'Plan, seat, number and usage charges. Add-on purchases sit on the other tab.',
+    actions: `<button type="button" class="btn-ico inv-export" id="invExport" title="Export CSV" aria-label="Export the listed invoices as CSV">${B.icon('download', 18)}</button>`,
+    bind(root) {
+      invTab = 'invoices';
+      root.querySelector('#invExport').onclick = () => {
+        const r = invDt ? invDt.filtered() : []; if (!r.length) return B.toast('There is nothing to export with these filters.', 'error', 'Nothing to export');
+        B.download('invoices.csv', B.csv(['Date', 'Invoice number', 'Amount', 'Description', 'Payment method', 'Status'], r.map(x => [x.date, x.number, x.amount.toFixed(2), x.description, x.payment, x.status])), 'text/csv');
+        B.toast(`${r.length} row${r.length === 1 ? '' : 's'} exported.`, 'ok', 'Export ready');
+      };
+    },
     render(el) {
-      el.innerHTML = '<section class="bcard p-3"><div id="iTable"></div></section>';
-      B.DataTable(el.querySelector('#iTable'), {
-        caption: 'Invoices', rows: () => S.invoices.map(i => Object.assign({}, i, { amountText: i.amount.toFixed(2) })), idKey: 'id', dateKey: 'date', amountKey: 'amount',
-        searchKeys: ['id', 'customer', 'period', 'status', 'amountText'], searchPlaceholder: 'Search invoice number, customer or period',
-        filters: [{ key: 'status', label: 'Status', options: ['Paid', 'Pending', 'Overdue', 'Draft', 'Failed'] }],
+      el.innerHTML = `<div class="inv-kpis" id="invKpis" role="group" aria-label="Filter by status"></div><section class="bcard inv-card" data-plain>
+        <div class="inv-bar"><div class="inv-search"><span class="inv-si">${B.icon('search', 15)}</span><label class="visually-hidden" for="invQ">Search by invoice number</label><input id="invQ" type="search" class="form-control" placeholder="Search by invoice number" autocomplete="off"></div>
+          <div class="inv-filters"><label class="visually-hidden" for="invPeriod">Period</label><select id="invPeriod" class="form-select">${PERIODS.map(p => `<option value="${p[0]}">${p[1]}</option>`).join('')}</select>
+            <label class="visually-hidden" for="invStatus">Status</label><select id="invStatus" class="form-select"><option value="">Select status</option>${['Paid', 'Failed', 'Pending', 'Overdue'].map(x => `<option>${x}</option>`).join('')}</select>
+            <button type="button" class="btn btn-brand-o btn-sm" id="invReset">Reset</button></div></div>
+        <div class="tabs inv-tabs" role="tablist" aria-label="Invoice types"><button type="button" role="tab" class="tab active" aria-selected="true" data-it="invoices">Invoices</button><button type="button" role="tab" class="tab" aria-selected="false" data-it="addon">Add-on invoices</button></div>
+        <div id="iTable"></div></section>`;
+      invDt = B.DataTable(el.querySelector('#iTable'), {
+        caption: 'Invoices', toolbar: false, compactPager: true, pageSize: 25, idKey: 'id', dateKey: 'date', searchKeys: ['number', 'description', 'status'],
+        filters: [{ key: 'status', label: 'Status', options: ['Paid', 'Failed', 'Pending', 'Overdue'] }],
+        rows: () => ledger().filter(r => invTab === 'addon' ? isAddon(r.description) : !isAddon(r.description)),
         emptyText: 'No invoices found.',
         columns: [
-          { key: 'id', label: 'Invoice #', render: r => `<span class="mono fw-bold">${esc(r.id)}</span>` },
-          { key: 'customer', label: 'Customer', hide: 'lg' },
-          { key: 'period', label: 'Billing period', hide: 'md' },
-          { key: 'date', label: 'Invoice date', render: r => `<span class="text-nowrap">${B.fmtDate(r.date)}</span>` },
-          { key: 'amount', label: 'Amount', render: r => `<strong>${B.money(r.amount)}</strong>` },
+          { key: 'date', label: 'Date', render: r => `<span class="text-nowrap">${B.fmtDate(r.date)}</span>` },
+          { key: 'number', label: 'Invoice number', render: r => `<span class="mono inv-no">${esc(r.number)}</span>` },
+          { key: 'amount', label: 'Amount', align: 'end', render: r => `<strong>${B.money(r.amount)}</strong>` },
+          { key: 'description', label: 'Description', render: r => `<div class="inv-d">${esc(r.description)}</div>${r.description.length > 46 ? '<button type="button" class="btn btn-link p-0 inv-more" aria-expanded="false">Read More</button>' : ''}` },
+          { key: 'payment', label: 'Payment method', hide: 'md', render: r => `<span class="text-nowrap">${esc(r.payment)}</span>` },
           { key: 'status', label: 'Status', render: r => B.badge(r.status, B.statusKind(r.status)) },
-          { key: '_act', label: 'Actions', align: 'end' }
+          { key: '_act', label: 'Action', align: 'end' }
         ],
-        actions: r => B.actBtn('view', r.id, 'eye', `View invoice ${r.id}`) + B.actBtn('download', r.id, 'download', `Download invoice ${r.id}`) + B.actBtn('details', r.id, 'info', `Details for invoice ${r.id}`),
-        onAction: (a, r) => {
-          if (a === 'download') download(r);
-          else if (a === 'view') B.showInvoice(r);
-          else B.info(`Details · ${r.id}`, `<dl class="kv"><dt>Billing period</dt><dd>${esc(r.period)}</dd><dt>Invoice date</dt><dd>${B.fmtDate(r.date)}</dd><dt>Status</dt><dd>${B.badge(r.status, B.statusKind(r.status))}</dd><dt>Amount</dt><dd>${B.money(r.amount)}</dd><dt>Customer</dt><dd>${esc(r.customer)}</dd><dt>Payment</dt><dd>${r.status === 'Paid' ? 'Collected' : (NOTE[r.status] || '')}</dd></dl>`);
-        }
+        actions: r => B.actBtn('view', r.id, 'eye', `View invoice ${r.number}`),
+        onAction: (a, r) => { const row = ledger().find(x => x.id === r.id); if (row) B.showInvoice(row.kind === 'inv' ? row.src : B.activityInvoice(row.src)); }
+      });
+      /* status cards: counts and amounts for the current tab; a click filters the table to that status */
+      const KP = [['Paid', 'Paid', 'ok', 'wallet'], ['Pending', 'Pending', 'warn', 'clock'], ['Overdue', 'Overdue', 'bad', 'bell'], ['Failed', 'Failed', 'bad', 'refresh']];
+      const tabRows = () => ledger().filter(r => invTab === 'addon' ? isAddon(r.description) : !isAddon(r.description));
+      const paintKpis = () => {
+        const rows = tabRows(), cur = invDt.state.filters.status || '';
+        el.querySelector('#invKpis').innerHTML = KP.map(k => { const r = rows.filter(x => x.status === k[0]); return `<button type="button" class="inv-kpi k-${k[2]} ${cur === k[0] ? 'on' : ''}" data-ks="${k[0]}" aria-pressed="${cur === k[0]}"><span class="inv-ki">${B.icon(k[3], 18)}</span><span class="inv-kt"><small>${k[1]} invoices</small><b>${B.money(r2(r.reduce((n, x) => n + x.amount, 0)))}</b><em>${r.length} invoice${r.length === 1 ? '' : 's'}</em></span></button>`; }).join('');
+      };
+      const setStatus = v => { invDt.state.filters.status = v; el.querySelector('#invStatus').value = v; invDt.state.page = 1; invDt.refresh(); paintKpis(); };
+      paintKpis();
+      el.querySelector('#invKpis').addEventListener('click', e => { const b = e.target.closest('[data-ks]'); if (b) setStatus(invDt.state.filters.status === b.dataset.ks ? '' : b.dataset.ks); });
+      /* size the card to the space that is visible, so the table body scrolls and the pager is always on screen */
+      const card = el.querySelector('.inv-card'), view = document.getElementById('view');
+      const fit = () => {
+        if (!card.isConnected) return window.removeEventListener('resize', fit);
+        if (window.innerWidth >= 768) { const top = card.getBoundingClientRect().top - view.getBoundingClientRect().top + view.scrollTop; card.style.height = Math.max(440, view.clientHeight - top - 28) + 'px'; }
+        else card.style.height = Math.max(460, window.innerHeight - 56 - 28) + 'px';
+      };
+      if (invFit) window.removeEventListener('resize', invFit);
+      invFit = fit; window.addEventListener('resize', fit); fit(); setTimeout(fit, 120);
+      const st = invDt.state, go = () => { st.page = 1; invDt.refresh(); };
+      el.querySelector('#invQ').addEventListener('input', e => { st.q = e.target.value; go(); });
+      el.querySelector('#invPeriod').addEventListener('change', e => { st.from = sinceOf(e.target.value); go(); });
+      el.querySelector('#invStatus').addEventListener('change', e => { st.filters.status = e.target.value; go(); paintKpis(); });
+      el.querySelector('#invReset').onclick = () => { st.q = ''; st.from = ''; st.to = ''; st.filters = {}; el.querySelector('#invQ').value = ''; el.querySelector('#invPeriod').value = ''; el.querySelector('#invStatus').value = ''; go(); paintKpis(); };
+      el.querySelectorAll('[data-it]').forEach(b => b.onclick = () => { invTab = b.dataset.it; el.querySelectorAll('[data-it]').forEach(t => { const on = t === b; t.classList.toggle('active', on); t.setAttribute('aria-selected', on); }); go(); paintKpis(); });
+      el.querySelector('#iTable').addEventListener('click', e => {
+        const tr = e.target.closest('tbody tr');
+        if (tr && !e.target.closest('button, a, input, select, .dropdown')) { const v = tr.querySelector('[data-act="view"]'); if (v) return v.click(); }
+        const m = e.target.closest('.inv-more'); if (!m) return; const d = m.previousElementSibling, open = !d.classList.contains('open');
+        d.classList.toggle('open', open); m.textContent = open ? 'Show less' : 'Read More'; m.setAttribute('aria-expanded', open);
       });
     }
   };

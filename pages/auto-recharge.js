@@ -11,7 +11,7 @@
     { id: 1, date: '2026-09-03', type: 'settings', amount: 0, status: 'Saved', text: 'Auto recharge turned on', ref: 'AR-880377' }
   ];
 
-  let P, redraw, d, touched = {}, tried = false, saving = false, busy = false, loading = false;
+  let arRange = '', P, redraw, d, touched = {}, tried = false, saving = false, busy = false, loading = false;
   const a = () => S.autoRecharge;
   const method = (id = a().methodId) => S.methods.find(m => m.id === id) || S.methods.find(m => m.primary) || S.methods[0] || null;
   const mLabel = m => m ? `${m.brand} •••• ${m.last4}` : 'No payment method';
@@ -91,8 +91,8 @@
   };
 
   const badgeFor = () => {
-    if (!a().on) return B.badge('Off', 'muted');
-    return a().state === 'failed' ? B.badge('Payment failed', 'bad') : a().state === 'limit' ? B.badge('Limit reached', 'warn') : B.badge('Active', 'ok');
+    if (!a().on) return B.badge('Disabled', 'muted');
+    return a().state === 'failed' ? B.badge('Payment failed', 'bad') : a().state === 'limit' ? B.badge('Limit reached', 'warn') : B.badge('Enabled', 'ok');
   };
 
   function banner() {
@@ -104,7 +104,7 @@
   }
 
   function field(id, label, hint, extra = '') {
-    return `<div class="col-12 col-sm-6"><label class="form-label" for="ar_${id}">${label}</label>
+    return `<div class="col-12 col-md-6 col-xl-4"><label class="form-label ar-lbl" for="ar_${id}"><span class="ar-li">${B.icon(id === 'limit' ? 'wallet' : 'payment', 15)}</span>${label}</label>
       <div class="input-group"><span class="input-group-text">$</span><input id="ar_${id}" class="form-control" inputmode="decimal" autocomplete="off" value="${esc(d[id])}" ${d.on ? '' : 'disabled'} aria-describedby="ar_${id}_h ar_${id}_e" ${extra}></div>
       <div class="ar-hint" id="ar_${id}_h">${hint}</div><div class="ar-err" id="ar_${id}_e" role="alert"></div></div>`;
   }
@@ -112,49 +112,58 @@
   function draw() {
     if (!P || !P.isConnected || loading) return;
     const used = a().limit ? Math.min(100, Math.round(a().spent / a().limit * 100)) : 0, tone = a().state === 'limit' || used >= 100 ? 'bg-warning' : a().state === 'failed' ? 'bg-danger' : '';
-    const m = method(d.methodId);
-    P.innerHTML = `<div class="d-grid gap-3">
+    const m = method(d.methodId), lastAmt = S.autoLog.find(x => x.type === 'recharge');
+    P.innerHTML = `<div class="d-grid gap-3 ar-page">
       ${banner()}
       <div class="row g-3">
-        <div class="col-12 col-xl-7"><section class="bsub p-3 h-100" aria-labelledby="arh">
-          <div class="d-flex justify-content-between align-items-start gap-3 mb-1"><div><h2 class="sub-title" id="arh">Auto recharge settings ${badgeFor()}</h2><p class="sub-desc">Add credit for you when the balance runs low, so calls and messages keep going.</p></div>
-            <div class="form-check form-switch m-0"><input class="form-check-input" type="checkbox" role="switch" id="ar_on" aria-labelledby="arh" ${d.on ? 'checked' : ''} ${saving ? 'disabled' : ''}></div></div>
+        <div class="col-12 col-xl-8"><section class="bsub ar-card h-100" aria-labelledby="arh">
+          <div class="ar-head"><span class="ar-hico">${B.icon('power', 22)}</span><div class="me-auto"><h2 class="ar-title" id="arh">Auto Recharge</h2><p class="ar-sub">Automatically add credits when your balance is low. Keep your service active without interruption.</p></div>
+            <label class="ar-sw" for="ar_on"><span class="form-check form-switch m-0"><input class="form-check-input" type="checkbox" role="switch" id="ar_on" ${d.on ? 'checked' : ''} ${saving ? 'disabled' : ''}></span>${badgeFor()}</label></div>
           <form id="arForm" novalidate><div class="row g-3 mt-0 ${d.on ? '' : 'ar-off'}">
-            ${field('threshold', 'Recharge threshold', 'Recharge when the balance falls below this.')}
-            ${field('amount', 'Recharge amount', 'How much to add each time.')}
-            <div class="col-12 col-sm-6"><label class="form-label" for="ar_method">Payment method</label>
-              <select id="ar_method" class="form-select" ${d.on && S.methods.length ? '' : 'disabled'} aria-describedby="ar_method_e">${S.methods.length ? S.methods.map(x => `<option value="${x.id}" ${m && m.id === x.id ? 'selected' : ''}>${esc(mLabel(x))}${x.primary ? ' (primary)' : ''}</option>`).join('') : '<option>No card saved</option>'}</select>
+            <div class="col-12 col-md-6 col-xl-4"><label class="form-label ar-lbl" for="ar_method"><span class="ar-li">${B.icon('card', 15)}</span>Payment Method</label>
+              <select id="ar_method" class="form-select" ${d.on && S.methods.length ? '' : 'disabled'} aria-describedby="ar_method_e">${S.methods.length ? S.methods.map(x => `<option value="${x.id}" ${m && m.id === x.id ? 'selected' : ''}>${esc(x.brand)} ending in ${esc(x.last4)}${x.primary ? ' (primary)' : ''}</option>`).join('') : '<option>No card saved</option>'}</select>
               <div class="ar-hint">${S.methods.length ? 'The card that is charged.' : ''}</div><div class="ar-err" id="ar_method_e" role="alert"></div>
               ${!S.methods.length ? '<button type="button" class="btn btn-link btn-sm p-0" data-ar="update">Add a payment method</button>' : ''}</div>
-            ${field('limit', 'Monthly auto-recharge limit', 'The most that can be recharged in a billing month.')}
-            <div class="col-12"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" role="switch" id="ar_notify" ${d.notify ? 'checked' : ''} ${d.on ? '' : 'disabled'}><label class="form-check-label" for="ar_notify"><b>Low-credit notification</b><span class="d-block small text-muted">Tell me when my balance falls below the threshold, and when a recharge runs or fails.</span></label></div></div>
+            ${field('threshold', 'Recharge Threshold', 'Recharge when the balance falls below this.')}
+            ${field('amount', 'Recharge Amount', 'How much to add each time.')}
+            ${field('limit', 'Monthly Limit', 'The most that can be recharged in a billing month.')}
+            <div class="col-12 col-xl-8"><div class="ar-note"><span class="ar-ni">${B.icon('info', 16)}</span><label class="flex-grow-1 mb-0" for="ar_notify">Your card will be charged automatically when your balance falls below <b>${$(+d.threshold || a().threshold)}</b>. Notify me when it runs or fails.</label><span class="form-check form-switch m-0"><input class="form-check-input" type="checkbox" role="switch" id="ar_notify" aria-label="Low-credit notification" ${d.notify ? 'checked' : ''} ${d.on ? '' : 'disabled'}></span></div></div>
           </div>
-          <div class="ar-actions"><button type="submit" class="btn btn-brand" id="arSave" ${saving || !dirty() ? 'disabled' : ''}>${saving ? '<span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>Saving…' : 'Save changes'}</button>
-            <button type="button" class="btn btn-brand-o" data-ar="cancel" ${saving || !dirty() ? 'disabled' : ''}>Cancel</button>
-            <button type="button" class="btn btn-link ms-auto" data-ar="reset" ${saving ? 'disabled' : ''}>Reset to defaults</button></div></form>
+          <div class="ar-actions"><button type="button" class="btn btn-link me-auto p-0" data-ar="reset" ${saving ? 'disabled' : ''}>Reset to defaults</button>
+            <button type="submit" class="btn btn-brand" id="arSave" ${saving || !dirty() ? 'disabled' : ''}>${saving ? '<span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>Saving\u2026' : 'Save Changes'}</button>
+            <button type="button" class="btn btn-brand-o" data-ar="cancel" ${saving || !dirty() ? 'disabled' : ''}>Cancel</button></div></form>
         </section></div>
-        <div class="col-12 col-xl-5"><section class="bsub p-3 h-100" aria-labelledby="aru">
-          <h2 class="sub-title" id="aru">This month</h2><p class="sub-desc">Recharged so far against your monthly limit.</p>
-          <div class="d-flex justify-content-between align-items-end mt-2"><div class="ar-big">${$(a().spent)}</div><div class="text-muted small">of ${$(a().limit)} limit</div></div>
-          <div class="progress my-2" role="progressbar" aria-label="Monthly auto-recharge limit used" aria-valuenow="${used}" aria-valuemin="0" aria-valuemax="100" style="height:8px"><div class="progress-bar ${tone}" style="width:${used}%"></div></div>
-          <dl class="kv mb-3"><dt>Remaining this month</dt><dd>${$(remaining())}</dd><dt>Resets on</dt><dd>${B.fmtDate(S.period.next)}</dd><dt>Current balance</dt><dd>${$(S.credit)}</dd><dt>Last run</dt><dd>${a().lastRun ? B.fmtDate(a().lastRun) : 'Never'}</dd></dl>
-          <button type="button" class="btn btn-brand-o w-100" data-ar="check" ${busy || !a().on ? 'disabled' : ''}>${busy ? '<span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>Charging…' : 'Check balance now'}</button>
-          ${a().on ? '' : '<p class="small text-muted mt-2 mb-0">Turn auto recharge on and save to use this.</p>'}
+        <div class="col-12 col-xl-4"><section class="bsub ar-card h-100" aria-labelledby="aru">
+          <div class="ar-head"><span class="ar-hico sm">${B.icon('statement', 18)}</span><h2 class="ar-title sm me-auto" id="aru">Monthly Auto-Recharge Summary</h2>${a().on ? B.badge('Auto Recharge', 'ok') : ''}</div>
+          <div class="ar-tiles">
+            <div class="ar-tile"><span class="ar-ti">${B.icon('wallet', 18)}</span><div><div class="ar-tl">Current Balance</div><div class="ar-tv">${$(S.credit)}</div></div></div>
+            <div class="ar-tile"><span class="ar-ti">${B.icon('clock', 18)}</span><div><div class="ar-tl">Last Recharge</div><div class="ar-tv sm">${a().lastRun ? B.fmtDate(a().lastRun) : 'Never'}</div>${lastAmt ? `<div class="ar-tl">${$(lastAmt.amount)}</div>` : ''}</div></div>
+            <div class="ar-tile"><span class="ar-ti">${B.icon('lock', 18)}</span><div><div class="ar-tl">Monthly Limit</div><div class="ar-tv">${$(a().limit)}</div></div></div></div>
+          <div class="d-flex justify-content-between small mt-3 mb-1"><span class="fw-semibold">Recharge Progress</span><span><b>${$(a().spent)}</b> / ${$(a().limit)} (${used}%)</span></div>
+          <div class="progress mb-1" role="progressbar" aria-label="Monthly auto-recharge limit used" aria-valuenow="${used}" aria-valuemin="0" aria-valuemax="100" style="height:6px"><div class="progress-bar ${tone}" style="width:${used}%"></div></div>
+          <div class="small text-muted mb-3">${$(remaining())} remaining \u00b7 resets on ${B.fmtDate(S.period.next)}</div>
+          <button type="button" class="btn ar-check w-100" data-ar="check" ${busy || !a().on ? 'disabled' : ''}>${busy ? '<span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>Charging\u2026' : `${B.icon('refresh', 16)} Check Balance Now`}</button>
+          ${a().on ? '' : '<p class="small text-muted mt-2 mb-0">Turn Auto Recharge on to use this.</p>'}
         </section></div>
       </div>
-      <section class="bsub overflow-hidden" aria-labelledby="arlog"><div class="p-3 pb-0"><h2 class="sub-title" id="arlog">Auto recharge activity</h2><p class="sub-desc">Recharges, failed payments, limit pauses and changes to these settings.</p></div><div id="arTable"></div></section></div>`;
+      <section class="bsub ar-card overflow-hidden p-0" aria-labelledby="arlog"><div class="ar-head p-3 pb-2 mb-0"><span class="ar-hico sm">${B.icon('clock', 18)}</span><div class="me-auto"><h2 class="ar-title sm" id="arlog">Auto Recharge Activity</h2><p class="ar-sub">View your recent auto recharge transactions and activity.</p></div>
+          <label class="visually-hidden" for="arRange">Date range</label><select id="arRange" class="form-select form-select-sm ar-range">${[['', 'All time'], ['30', 'Last 30 days'], ['90', 'Last 90 days']].map(o => `<option value="${o[0]}" ${arRange === o[0] ? 'selected' : ''}>${o[1]}</option>`).join('')}</select></div>
+        <div class="px-3 pb-3" id="arTable"></div></section></div>`;
     wire(); paintErrors();
-    B.DataTable(P.querySelector('#arTable'), {
-      caption: 'Auto recharge activity', toolbar: false, search: false, compactPager: true, pageSize: 5, idKey: 'id',
+    const adt = B.DataTable(P.querySelector('#arTable'), {
+      caption: 'Auto recharge activity', toolbar: false, search: false, compactPager: true, pageSize: 5, idKey: 'id', dateKey: 'date',
       rows: () => S.autoLog, emptyHtml: '<strong>No activity yet</strong><span>Recharges and changes to these settings will show up here.</span>',
       columns: [
-        { key: 'date', label: 'Date', render: r => `<span class="text-nowrap">${B.fmtDate(r.date)}</span>` },
+        { key: 'date', label: 'Date & Time', render: r => `<span class="text-nowrap">${B.fmtDate(r.date)}</span>` },
         { key: 'text', label: 'Event', render: r => `<div class="fw-semibold">${esc({ recharge: 'Recharge', failed: 'Payment failed', limit: 'Limit reached', settings: 'Settings changed' }[r.type])}</div><div class="text-muted small">${esc(r.text)}</div>` },
         { key: 'amount', label: 'Amount', align: 'end', render: r => r.amount ? $(r.amount) : '<span class="text-muted">—</span>' },
         { key: 'status', label: 'Status', render: r => B.badge(r.status, { Paid: 'ok', Saved: 'info', Failed: 'bad', Paused: 'warn' }[r.status] || 'muted') },
         { key: 'ref', label: 'Reference', hide: 'md', render: r => `<span class="mono">${esc(r.ref)}</span>` }
       ]
     });
+    const since = v => { if (!v) return ''; const t = new Date(S.today + 'T00:00:00'); t.setDate(t.getDate() - (+v - 1)); return t.toISOString().slice(0, 10); };
+    adt.state.from = since(arRange); adt.refresh();
+    P.querySelector('#arRange').onchange = e => { arRange = e.target.value; adt.state.from = since(arRange); adt.state.page = 1; adt.refresh(); };
   }
 
   function paintErrors() {
@@ -170,7 +179,7 @@
   }
 
   function wire() {
-    P.querySelector('#ar_on').onchange = ev => { d.on = ev.target.checked; if (d.on && !d.methodId && method()) d.methodId = method().id; touched = {}; draw(); };
+    P.querySelector('#ar_on').onchange = ev => { const want = ev.target.checked; ev.target.checked = !want; toggle(want); };
     ['threshold', 'amount', 'limit'].forEach(k => {
       const el = P.querySelector('#ar_' + k); if (!el) return;
       el.addEventListener('input', () => { d[k] = el.value; touched[k] = true; paintErrors(); sync(); });
@@ -188,6 +197,44 @@
       topup: () => { redraw && redraw('credit'); },
       raise: () => { const el = P.querySelector('#ar_limit'); if (el) { el.disabled = false; el.focus(); el.select(); } }
     }[b.dataset.ar] || (() => {}))());
+  }
+
+  /* ---------- the on/off switch: asks first, and only flips after the user confirms ---------- */
+  function toggle(want) {
+    if (saving) return;
+    if (!want) {
+      const md = B.modal({ title: 'Turn off Auto Recharge?', size: 'modal-md ar-modal', body: `<div class="ar-mi off">${B.icon('power', 26)}</div><h3 class="ar-mt">Turn off Auto Recharge?</h3><p class="ar-mp">Your balance will not be topped up automatically, and calls stop connecting if it reaches $0.00. Do you want to disable Auto Recharge?</p>`,
+        footer: '<button type="button" class="btn btn-brand-o" data-bs-dismiss="modal">Keep Enabled</button><button type="button" class="btn btn-danger" data-ok>Turn Off</button>' });
+      md.el.querySelector('[data-ok]').onclick = ev => confirmToggle(md, ev.target, false);
+      return;
+    }
+    if (!d.methodId && method()) d.methodId = method().id;
+    tried = true; const e = validate(Object.assign({}, d, { on: true })); paintErrors();
+    if (e.method) return B.toast(e.method, 'error', 'No payment method');
+    if (Object.keys(e).length) { draw(); return B.toast('Fix the highlighted fields, then turn Auto Recharge on.', 'error', 'Cannot enable yet'); }
+    const m = method(d.methodId), shield = '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 2.8v5.4c0 4.4-2.9 7.9-7 9.8-4.1-1.9-7-5.4-7-9.8V5.8z"/><path d="M8.8 12.2l2.4 2.4 4-4.6"/></svg>';
+    const md = B.modal({ title: 'Enable Auto Recharge?', size: 'modal-md ar-modal',
+      body: `<div class="ar-mi">${B.icon('power', 26)}</div><h3 class="ar-mt">Enable Auto Recharge?</h3>
+        <p class="ar-mp">Your saved payment method (<b>${esc(m.brand)} ending in ${esc(m.last4)}</b>) will be charged automatically when your balance falls below the threshold.</p>
+        <div class="ar-stats"><div><span>Threshold</span><b>${$(+d.threshold)}</b></div><div><span>Recharge Amount</span><b>${$(+d.amount)}</b></div><div><span>Monthly Limit</span><b>${$(+d.limit)}</b></div></div>
+        <div class="alert alert-danger d-none mt-3 mb-0" data-err role="alert"></div>`,
+      footer: '<button type="button" class="btn btn-brand-o" data-bs-dismiss="modal">Cancel</button><button type="button" class="btn btn-brand" data-ok>Enable Auto Recharge</button>' });
+    md.el.querySelector('[data-ok]').onclick = ev => confirmToggle(md, ev.target, true);
+  }
+
+  function confirmToggle(md, btn, on) {
+    const box = md.el.querySelector('[data-err]'), m = method(d.methodId);
+    if (on && (!m || isExpired(m))) { if (box) { box.textContent = m ? `${mLabel(m)} has expired. Choose another card before enabling Auto Recharge.` : 'Add a payment method first.'; box.classList.remove('d-none'); } return; }
+    saving = true; btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>Processing…';
+    setTimeout(() => {
+      try {
+        if (on) { Object.assign(a(), { on: true, threshold: +d.threshold, amount: +d.amount, limit: +d.limit, methodId: m.id, notify: d.notify }); if (a().state === 'failed') a().state = 'ok'; }
+        else { a().on = false; a().state = 'ok'; }
+        log('settings', 0, 'Saved', on ? `Turned on: ${$(a().amount)} below ${$(a().threshold)}, limit ${$(a().limit)}` : 'Auto recharge turned off');
+        saving = false; d = fromSaved(); touched = {}; tried = false; md.hide(); draw();
+        B.toast(on ? `Auto Recharge is on. ${$(a().amount)} is added when the balance falls below ${$(a().threshold)}.` : 'Auto Recharge is off.', 'ok', on ? 'Auto Recharge enabled' : 'Auto Recharge disabled');
+      } catch (err) { saving = false; btn.disabled = false; btn.textContent = on ? 'Enable Auto Recharge' : 'Turn Off'; B.toast('We could not change Auto Recharge. Please try again.', 'error', 'Update failed'); }
+    }, 700);
   }
 
   /* ---------- save (with confirmation) ---------- */

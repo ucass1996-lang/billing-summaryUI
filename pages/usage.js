@@ -65,18 +65,23 @@
       </section>
 
       <section class="ao-card" aria-label="Plan inclusions">
-        <div class="ao-head"><div><div class="ao-name">Plan inclusions</div><div class="ao-desc">What your plan includes each period, how much you have used, and what is left.</div></div><button type="button" class="btn btn-brand-o" id="costList">Full cost list</button></div>
+        <div class="ao-head"><div><div class="ao-name">Plan usage balance</div><div class="ao-desc">What your plan includes each period, how much you have used, and what is left.</div></div><button type="button" class="btn btn-brand-o" id="costList">Full cost list</button></div>
         <div class="table-responsive"><table class="table btable align-middle"><caption class="visually-hidden">Plan inclusions</caption>
-          <thead><tr>${['Allowance', 'Included', 'Used', 'Left', 'Rate', 'Charge'].map((h, i) => `<th scope="col" class="${i ? 'text-end' : ''}"><span class="th-static">${h}</span></th>`).join('')}</tr></thead>
+          <thead><tr>${['Allowance', 'Committed', 'Spent', 'Available', 'Used %', 'Rate', 'Charge'].map((h, i) => `<th scope="col" class="${i ? 'text-end' : ''}"><span class="th-static">${h}</span></th>`).join('')}</tr></thead>
           <tbody>${S.usage.map(u => {
             const over = Math.max(0, u.used - u.included), left = Math.max(0, u.included - u.used), pct = B.pct(u.used, u.included);
             return `<tr><td><div class="fw-semibold">${esc(u.label)}</div><div class="text-muted small">${pct > 100 ? 'Over the allowance' : pct >= 85 ? 'Near the allowance' : 'Within the allowance'} · ${pct}% used</div></td>
               <td class="text-end">${B.num(u.included)} ${esc(u.unit)}</td><td class="text-end">${B.num(u.used)} ${esc(u.unit)}</td>
               <td class="text-end ${left ? '' : 'text-danger'}">${left ? B.num(left) + ' ' + esc(u.unit) : 'None left'}</td>
+              <td class="text-end"><div class="up-pct"><span>${pct}%</span><div class="wl-bar ${pct >= 100 ? 'full' : pct >= 85 ? 'warn' : ''}" role="progressbar" aria-label="${esc(u.label)} used" aria-valuenow="${Math.min(100, pct)}" aria-valuemin="0" aria-valuemax="100"><i style="width:${Math.min(100, pct)}%"></i></div></div></td>
               <td class="text-end">${rate(u.rate)} <span class="text-muted small">/ ${esc(u.unit.replace(/s$/, ''))}</span></td><td class="text-end fw-bold ${over ? 'text-danger' : ''}">${$(over * u.rate)}</td></tr>`;
           }).join('')}</tbody></table></div>
         <div class="px-3 py-2 small" style="background:var(--info-bg);color:var(--info)">Usage beyond an allowance is charged at the rate shown. Seats and add-ons are billed with the plan, not here.</div>
       </section>
+
+      ${B.cu.walletsSection()}
+      ${B.cu.historySection()}
+      ${B.cu.analyticsSection(startOf(), label())}
 
       <section class="ao-card" aria-label="Where the charges went">
         <div class="ao-head"><div><div class="ao-name">Where the charges went</div><div class="ao-desc">The same period, split three ways. Credit is pooled across the company, but every charge belongs to somebody — this is who.</div></div>
@@ -96,7 +101,7 @@
         <div class="ao-row"><div><div class="ao-h">Looking for one particular charge?</div><div class="ao-t">Filter by usage type or date, then sort by Charge to see the largest first. Each row shows the date, quantity and what it cost.</div></div></div>
       </section></div>`;
 
-    { const sec = [...host.querySelectorAll('.d-grid > section')]; B.sectionTabs({ anchor: sec[0], groups: [[sec[0], sec[1]], [sec[2]], [sec[3]]], labels: ['Overview', 'Where charges went', 'Usage records'], key: 'usage' }); }
+    { const sec = [...host.querySelectorAll('.d-grid > section')]; B.sectionTabs({ anchor: sec[0], groups: [[sec[0], sec[1]], [sec[2]], [sec[3]], [sec[4]], [sec[5]], [sec[6]]], labels: ['Overview', 'Credits & wallets', 'Usage history', 'Analytics', 'Where charges went', 'Daily records'], icons: [B.pillIcons.grid, B.pillIcons.wallet, B.pillIcons.clock, B.pillIcons.chart, B.pillIcons.list, B.pillIcons.cal], key: 'usage' }); B.cu.bind(host, { start: startOf(), redraw: draw }); }
     host.querySelector('#toggleBreak').onclick = () => { showBreak = !showBreak; draw(); };
     host.querySelector('#costList').onclick = () => B.info('Full cost list', `<div class="table-responsive"><table class="table btable"><thead><tr><th scope="col"><span class="th-static">Service</span></th><th scope="col" class="text-end"><span class="th-static">Rate</span></th><th scope="col" class="text-end"><span class="th-static">Allowance</span></th></tr></thead><tbody>${S.usage.map(u => `<tr><td>${esc(u.label)}</td><td class="text-end">${rate(u.rate)} per ${esc(u.unit.replace(/s$/, ''))}</td><td class="text-end">${B.num(u.included)} ${esc(u.unit)}</td></tr>`).join('')}</tbody></table></div><p class="text-muted small mb-0">Rates apply only to usage beyond the allowance.</p>`);
 
